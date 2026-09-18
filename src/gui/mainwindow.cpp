@@ -5106,8 +5106,6 @@ void MainWindow::configureEditorDisplayPane(ResultDisplay* display, Editor* edit
     connect(this, &MainWindow::syntaxHighlightingChanged, editor, &Editor::rehighlight);
     connect(this, &MainWindow::classicAppearanceChanged, display, &ResultDisplay::rehighlight);
     connect(this, &MainWindow::classicAppearanceChanged, editor, &Editor::rehighlight);
-    connect(this, &MainWindow::classicAppearanceChanged, display, &ResultDisplay::reRenderAll);
-    connect(this, &MainWindow::classicAppearanceChanged, editor, &Editor::reflowForAppearanceChange);
 }
 
 void MainWindow::splitActivePane(Qt::Orientation orientation, bool insertAfter)
@@ -7360,8 +7358,8 @@ void MainWindow::createFixedConnections()
     connect(this, SIGNAL(syntaxHighlightingChanged()), m_widgets.editor, SLOT(rehighlight()));
     connect(this, SIGNAL(classicAppearanceChanged()), m_widgets.display, SLOT(rehighlight()));
     connect(this, SIGNAL(classicAppearanceChanged()), m_widgets.editor, SLOT(rehighlight()));
-    connect(this, SIGNAL(classicAppearanceChanged()), m_widgets.display, SLOT(reRenderAll()));
-    connect(this, SIGNAL(classicAppearanceChanged()), m_widgets.editor, SLOT(reflowForAppearanceChange()));
+    connect(this, &MainWindow::classicAppearanceChanged,
+            this, &MainWindow::reapplyClassicAppearanceToHistory);
 
     connect(m_actions.settingsDisplayFont, SIGNAL(triggered()), SLOT(showFontDialog()));
     connect(m_actions.settingsDisplayColorSchemeCustom, SIGNAL(triggered()), SLOT(showCustomThemeDialog()));
@@ -10287,6 +10285,23 @@ void MainWindow::setClassicAppearanceEnabled(bool b)
     emit classicAppearanceChanged();
 }
 
+void MainWindow::reapplyClassicAppearanceToHistory()
+{
+    // History entries cache their rendered display lines (with the operator
+    // spacing captured at creation time), so a full re-render alone would replay
+    // the stale spacing. Drop those caches first, then rebuild every pane so each
+    // line is re-formatted for the current appearance mode; also reflow the live
+    // input text. This makes toggling classic re-tighten (and untoggling re-space)
+    // all existing history immediately.
+    for (Editor* editor : splitPaneEditors()) {
+        if (Session* session = editor->session())
+            session->clearRenderedLineCaches();
+        editor->reflowForAppearanceChange();
+    }
+    for (ResultDisplay* display : splitPaneDisplays())
+        display->reRenderAll();
+}
+
 void MainWindow::setDigitGrouping(QAction *action)
 {
     m_settings->digitGrouping = action->data().toInt();
@@ -10722,8 +10737,13 @@ void MainWindow::showStateLabel(const QString& msg)
     m_widgets.state->show();
     m_widgets.state->raise();
     const int height = m_widgets.state->height();
+    // In classic mode align the popup's left edge with the input text (accounting
+    // for the classic editor padding), rather than the 1.0 tooltip inset.
+    const int leftMargin = classicAppearance
+        ? positionEditor->textLeftInset()
+        : UiConfig::ResultTooltipStartMargin;
     QPoint pos = mapFromGlobal(
-        positionEditor->mapToGlobal(QPoint(UiConfig::ResultTooltipStartMargin, -height)));
+        positionEditor->mapToGlobal(QPoint(leftMargin, -height)));
     m_widgets.state->move(pos);
 }
 

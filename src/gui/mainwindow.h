@@ -216,6 +216,7 @@ private slots:
     void setStatusBarVisible(bool);
     void setSyntaxHighlightingEnabled(bool);
     void setClassicAppearanceEnabled(bool);
+    void reapplyClassicAppearanceToHistory();
     void setDigitGrouping(QAction*);
     void setDigitGroupingIntegerPartOnlyEnabled(bool);
     void setAutoResultToClipboardEnabled(bool);

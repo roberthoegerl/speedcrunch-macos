@@ -527,6 +527,12 @@ void Session::clearHistory()
     m_historyHead = 0;
 }
 
+void Session::clearRenderedLineCaches()
+{
+    for (HistoryEntry& entry : m_history)
+        entry.setRenderedLines(QStringList());
+}
+
 void Session::addUserFunction(const UserFunction &func)
 {
     if(func.opcodes.isEmpty()) {

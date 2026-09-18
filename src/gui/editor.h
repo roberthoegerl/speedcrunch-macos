@@ -68,6 +68,11 @@ public:
                                   int cornerRadius);
     void setThemeSurfaceColor(const QColor& color, const QColor& outerColor = QColor());
     void setSession(Session* session);
+    Session* session() const { return m_session; }
+    // Left offset (px) from the widget edge to where the text glyphs start, given
+    // the current appearance mode's margins/border/padding. Used to align the
+    // auto-calc popup's left edge with the input text.
+    int textLeftInset() const;
     void setHistoryArrowNavigationEnabled(bool enabled);
     void setCursorPosition(int pos);
     void setText(const QString&);

@@ -1499,6 +1499,14 @@ void Editor::clearHistory()
     m_currentHistoryIndex = 0;
 }
 
+int Editor::textLeftInset() const
+{
+    if (Settings::instance()->classicAppearance)
+        return kEditorClassicHorizontalPadding + kEditorDocumentMargin;
+    return kEditorOuterLeft + UiConfig::OutlineStrokeWidth
+           + kEditorHorizontalPadding + kEditorDocumentMargin;
+}
+
 bool Editor::isAutoCompletionEnabled() const
 {
     return m_isAutoCompletionEnabled;

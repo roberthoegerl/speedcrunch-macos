@@ -71,6 +71,9 @@ public:
     QList<HistoryEntry> historyToList() const;
     void applyHistoryLimit();
     void clearHistory();
+    // Drop cached rendered display lines for every entry so they are re-formatted
+    // on next render (used when an appearance setting changes their spacing).
+    void clearRenderedLineCaches();
 
     void addUserFunction(const UserFunction & func);
     void removeUserFunction(const QString & str);
