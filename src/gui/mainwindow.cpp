@@ -3420,6 +3420,7 @@ void MainWindow::createActions()
     m_actions.settingsBehaviorSimplifyResultExpressions = new QAction(this);
     m_actions.settingsBehaviorHistorySizeLimit = new QAction(this);
     m_actions.settingsDisplayFont = new QAction(this);
+    m_actions.settingsDisplayClassicAppearance = new QAction(this);
     m_actions.settingsDisplayColorSchemeCustom = new QAction(this);
     m_actions.settingsLanguage = new QAction(this);
     m_actions.settingsRadixCharComma = new QAction(this);
@@ -3492,6 +3493,7 @@ void MainWindow::createActions()
     m_actions.settingsBehaviorPartialResults->setCheckable(true);
     m_actions.settingsBehaviorSaveWindowPositionOnExit->setCheckable(true);
     m_actions.settingsBehaviorSyntaxHighlighting->setCheckable(true);
+    m_actions.settingsDisplayClassicAppearance->setCheckable(true);
     m_actions.settingsBehaviorHoverHighlightResults->setCheckable(true);
     m_actions.settingsBehaviorDigitGroupingNone->setCheckable(true);
     m_actions.settingsBehaviorDigitGroupingNone->setData(0);
@@ -3845,6 +3847,7 @@ void MainWindow::setActionsText()
     m_actions.settingsImaginaryUnitI->setText(QStringLiteral("&i"));
     m_actions.settingsImaginaryUnitJ->setText(QStringLiteral("&j"));
     m_actions.settingsDisplayFont->setText(MainWindow::tr("&Font..."));
+    m_actions.settingsDisplayClassicAppearance->setText(MainWindow::tr("&Classic Appearance"));
     m_actions.settingsDisplayColorSchemeCustom->setText(MainWindow::tr("&Theme..."));
     m_actions.settingsLanguage->setText(MainWindow::tr("&Language..."));
 
@@ -4051,6 +4054,7 @@ void MainWindow::createMenus()
     m_menus.display->addSeparator();
     m_menus.display->addAction(m_actions.settingsBehaviorSyntaxHighlighting);
     m_menus.display->addAction(m_actions.settingsBehaviorHoverHighlightResults);
+    m_menus.display->addAction(m_actions.settingsDisplayClassicAppearance);
     m_menus.editing = m_menus.settings->addMenu("");
     m_menus.autoCompletion = m_menus.editing->addMenu("");
     m_menus.autoCompletion->addAction(m_actions.settingsBehaviorAutoCompletionBuiltInFunctions);
@@ -5100,6 +5104,8 @@ void MainWindow::configureEditorDisplayPane(ResultDisplay* display, Editor* edit
     connect(this, &MainWindow::colorSchemeChanged, editor, &Editor::rehighlight);
     connect(this, &MainWindow::syntaxHighlightingChanged, display, &ResultDisplay::rehighlight);
     connect(this, &MainWindow::syntaxHighlightingChanged, editor, &Editor::rehighlight);
+    connect(this, &MainWindow::classicAppearanceChanged, display, &ResultDisplay::rehighlight);
+    connect(this, &MainWindow::classicAppearanceChanged, editor, &Editor::rehighlight);
 }
 
 void MainWindow::splitActivePane(Qt::Orientation orientation, bool insertAfter)
@@ -7063,6 +7069,7 @@ void MainWindow::createFixedConnections()
     connect(this, &MainWindow::colorSchemeChanged, this, &MainWindow::applyThemeSurfacePalette);
     connect(this, &MainWindow::colorSchemeChanged, this, &MainWindow::refreshPaneThemes);
     connect(this, &MainWindow::syntaxHighlightingChanged, this, &MainWindow::refreshPaneThemes);
+    connect(this, &MainWindow::classicAppearanceChanged, this, &MainWindow::refreshPaneThemes);
 
     connect(m_actions.sessionExportJson, SIGNAL(triggered()), SLOT(exportJson()));
     connect(m_actions.sessionExportHtml, SIGNAL(triggered()), SLOT(exportHtml()));
@@ -7212,6 +7219,7 @@ void MainWindow::createFixedConnections()
     connect(m_actions.settingsBehaviorHistorySizeLimit, SIGNAL(triggered()), SLOT(setHistorySizeLimit()));
     connect(m_actions.settingsBehaviorSaveWindowPositionOnExit, SIGNAL(toggled(bool)), SLOT(setWindowPositionSaveEnabled(bool)));
     connect(m_actions.settingsBehaviorSyntaxHighlighting, SIGNAL(toggled(bool)), SLOT(setSyntaxHighlightingEnabled(bool)));
+    connect(m_actions.settingsDisplayClassicAppearance, SIGNAL(toggled(bool)), SLOT(setClassicAppearanceEnabled(bool)));
     connect(m_actions.settingsBehaviorHoverHighlightResults, SIGNAL(toggled(bool)), SLOT(setHoverHighlightResultsEnabled(bool)));
     connect(m_actionGroups.digitGrouping, SIGNAL(triggered(QAction*)), SLOT(setDigitGrouping(QAction*)));
     connect(m_actions.settingsBehaviorDigitGroupingIntegerPartOnly, SIGNAL(toggled(bool)), SLOT(setDigitGroupingIntegerPartOnlyEnabled(bool)));
@@ -7348,6 +7356,8 @@ void MainWindow::createFixedConnections()
     connect(this, SIGNAL(colorSchemeChanged()), m_widgets.editor, SLOT(rehighlight()));
     connect(this, SIGNAL(syntaxHighlightingChanged()), m_widgets.display, SLOT(rehighlight()));
     connect(this, SIGNAL(syntaxHighlightingChanged()), m_widgets.editor, SLOT(rehighlight()));
+    connect(this, SIGNAL(classicAppearanceChanged()), m_widgets.display, SLOT(rehighlight()));
+    connect(this, SIGNAL(classicAppearanceChanged()), m_widgets.editor, SLOT(rehighlight()));
 
     connect(m_actions.settingsDisplayFont, SIGNAL(triggered()), SLOT(showFontDialog()));
     connect(m_actions.settingsDisplayColorSchemeCustom, SIGNAL(triggered()), SLOT(showCustomThemeDialog()));
@@ -7605,6 +7615,11 @@ void MainWindow::applySettings()
         m_actions.settingsBehaviorHoverHighlightResults->setChecked(true);
     else
         setHoverHighlightResultsEnabled(false);
+
+    if (m_settings->classicAppearance)
+        m_actions.settingsDisplayClassicAppearance->setChecked(true);
+    else
+        setClassicAppearanceEnabled(false);
 
     if (m_settings->autoResultToClipboard)
         m_actions.settingsBehaviorAutoResultToClipboard->setChecked(true);
@@ -10259,6 +10274,12 @@ void MainWindow::setSyntaxHighlightingEnabled(bool b)
     emit syntaxHighlightingChanged();
 }
 
+void MainWindow::setClassicAppearanceEnabled(bool b)
+{
+    m_settings->classicAppearance = b;
+    emit classicAppearanceChanged();
+}
+
 void MainWindow::setDigitGrouping(QAction *action)
 {
     m_settings->digitGrouping = action->data().toInt();
@@ -10616,6 +10637,9 @@ void MainWindow::showStateLabel(const QString& msg)
     if (msg.contains(QStringLiteral("Current result:")))
         m_lastCurrentResultPreviewMessage = msg;
 
+    // Classic (0.12) appearance: small state label with square corners instead of
+    // the large, rounded 1.0 "Current result" popup.
+    const bool classicAppearance = m_settings->classicAppearance;
     const GeneratedThemeSurfaces surfaces = generatedSurfaceColors(m_settings);
     const ThemeSurfaceColors tooltipSurface =
         themeSurfaceForShadeIndex(surfaces, UiConfig::ResultTooltipBackgroundShade);
@@ -10626,7 +10650,7 @@ void MainWindow::showStateLabel(const QString& msg)
         tooltipSurface.background,
         tooltipSurface.foreground,
         tooltipOutline.background,
-        UiConfig::ResultTooltipCornerRadius));
+        classicAppearance ? 0 : UiConfig::ResultTooltipCornerRadius));
     m_widgets.stateCloseButton->setStyleSheet(QStringLiteral(R"(
         QPushButton {
             border: none;
@@ -10652,12 +10676,15 @@ void MainWindow::showStateLabel(const QString& msg)
     if (positionEditor == nullptr || positionEditor->window() != this)
         positionEditor = globallyActiveEditor();
 
-    const int closeButtonSize = qMax(14, positionEditor->fontMetrics().height() - 2);
+    // In classic mode the state label uses the normal (small) UI font rather than
+    // the large calculator display font, so the preview/error line stays compact.
+    const QFont stateFont = classicAppearance ? QApplication::font() : positionEditor->font();
+    const int closeButtonSize = qMax(14, QFontMetrics(stateFont).height() - 2);
     const int closeButtonRightPadding = 2;
     const int closeButtonTopPadding = 1;
     const int closeButtonReservedWidth = closeButtonSize + closeButtonRightPadding + 2;
     m_widgets.state->setContentsMargins(6, 3, closeButtonReservedWidth, 3);
-    m_widgets.state->setFont(positionEditor->font());
+    m_widgets.state->setFont(stateFont);
     m_widgets.state->setText(msg);
     m_widgets.stateCloseButton->setFixedSize(closeButtonSize, closeButtonSize);
     m_widgets.state->adjustSize();

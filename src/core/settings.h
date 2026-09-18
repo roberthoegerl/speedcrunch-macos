@@ -188,6 +188,7 @@ public:
     QString colorScheme;
     QString customColorSchemeJson;
     QString displayFont;
+    bool classicAppearance = false; // Compact 0.12-style look: no accent frame, small state label, tight operator spacing.
     QString sessionLayoutJson;
 
     QString language;

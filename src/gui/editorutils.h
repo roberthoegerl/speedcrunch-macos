@@ -13,6 +13,7 @@
 
 #include "core/unicodechars.h"
 #include "core/mathdsl.h"
+#include "core/settings.h"
 
 #include <QString>
 #include <QStringList>
@@ -122,6 +123,11 @@ inline QString adjustedTypedTextForImplicitMultiplicationAfterDigit(
         return typedText;
 
     const QChar typed = typedText.at(0);
+    // Classic (0.12) appearance uses tight operators (no spaces around the sign).
+    const bool tightOperatorSpacing = Settings::instance()->classicAppearance;
+    const auto wrapOperator = [tightOperatorSpacing](const QChar& op, const QChar& space) {
+        return tightOperatorSpacing ? QString(op) : MathDsl::buildWrappedToken(op, space);
+    };
     const auto isScientificExponentSignContext = [&]() {
         int i = cursorPosition - 1;
         while (i >= 0 && text.at(i).isSpace())
@@ -240,17 +246,17 @@ inline QString adjustedTypedTextForImplicitMultiplicationAfterDigit(
     } else if (typed == MathDsl::AddOp || MathDsl::isAdditionOperatorAlias(typed)) {
         if (!leftNonSpaceSupportsOperatorInsertion())
             return typedText;
-        operatorPrefix = MathDsl::buildWrappedToken(MathDsl::AddOp, MathDsl::AddWrap);
+        operatorPrefix = wrapOperator(MathDsl::AddOp, MathDsl::AddWrap);
     } else if (MathDsl::isSubtractionOperatorAlias(typed)) {
         if (isScientificExponentSignContext())
             return typedText;
         if (!leftNonSpaceSupportsOperatorInsertion())
             return typedText;
-        operatorPrefix = MathDsl::buildWrappedToken(MathDsl::SubOp, MathDsl::SubWrapSp);
+        operatorPrefix = wrapOperator(MathDsl::SubOp, MathDsl::SubWrapSp);
     } else if (typed == MathDsl::DivOp || MathDsl::isDivisionOperatorAlias(typed)) {
         if (!leftNonSpaceSupportsOperatorInsertion())
             return typedText;
-        operatorPrefix = MathDsl::buildWrappedToken(MathDsl::DivOp, MathDsl::DivWrap);
+        operatorPrefix = wrapOperator(MathDsl::DivOp, MathDsl::DivWrap);
     } else if (typed == MathDsl::PhasorOp) {
         if (!leftNonSpaceSupportsOperatorInsertion())
             return typedText;
@@ -262,7 +268,7 @@ inline QString adjustedTypedTextForImplicitMultiplicationAfterDigit(
         const bool useDotSign = typed == MathDsl::MulDotOp;
         const QChar sign = useDotSign ? MathDsl::MulDotOp : MathDsl::MulCrossOp;
         const QChar space = useDotSign ? MathDsl::MulDotWrapSp : MathDsl::MulCrossWrapSp;
-        operatorPrefix = MathDsl::buildWrappedToken(sign, space);
+        operatorPrefix = wrapOperator(sign, space);
     } else if (typed == MathDsl::Equals) {
         if (!leftNonSpaceSupportsOperatorInsertion())
             return typedText;
@@ -305,13 +311,13 @@ inline QString adjustedTypedTextForImplicitMultiplicationAfterDigit(
                 numericLeftTerm = baseIndex >= 0 && text.at(baseIndex).isDigit();
             }
             if (numericLeftTerm) {
-                return MathDsl::buildWrappedToken(MathDsl::MulCrossOp, MathDsl::MulCrossWrapSp)
+                return wrapOperator(MathDsl::MulCrossOp, MathDsl::MulCrossWrapSp)
                        + typedText;
             }
         }
     }
 
-    return MathDsl::buildWrappedToken(MathDsl::MulDotOp, MathDsl::MulDotWrapSp)
+    return wrapOperator(MathDsl::MulDotOp, MathDsl::MulDotWrapSp)
            + typedText;
 }
 

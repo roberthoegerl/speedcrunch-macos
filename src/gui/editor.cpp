@@ -3873,9 +3873,20 @@ void Editor::rehighlight()
         : color;
     const QString colorName = color.name();
     const QString primaryColorName = primaryColor.name();
-    const QString borderColorName = m_usePrimaryOutline
+    // Classic (0.12) appearance: no accent frame around the input, no rounded
+    // corners, and minimal padding/margins so the field is flush like 0.12.
+    const bool classicAppearance = Settings::instance()->classicAppearance;
+    const QString borderColorName = (m_usePrimaryOutline && !classicAppearance)
         ? primaryColorName
         : QStringLiteral("transparent");
+    const int editorStrokeWidth = classicAppearance ? 0 : UiConfig::OutlineStrokeWidth;
+    const int editorRadius = classicAppearance ? 0 : kEditorRadius;
+    const int editorOuterTop = classicAppearance ? 0 : kEditorOuterTop;
+    const int editorOuterRight = classicAppearance ? 0 : kEditorOuterRight;
+    const int editorOuterBottom = classicAppearance ? 0 : kEditorOuterBottom;
+    const int editorOuterLeft = classicAppearance ? 0 : kEditorOuterLeft;
+    const int editorVerticalPadding = classicAppearance ? 2 : kEditorVerticalPadding;
+    const int editorHorizontalPadding = classicAppearance ? 4 : kEditorHorizontalPadding;
     QPalette pal = palette();
     for (const QPalette::ColorGroup group : {QPalette::Active,
                                              QPalette::Inactive,
@@ -3911,14 +3922,14 @@ void Editor::rehighlight()
     )").arg(colorName,
             primaryColorName,
             borderColorName)
-       .arg(kEditorRadius)
-       .arg(kEditorOuterTop)
-       .arg(kEditorOuterRight)
-       .arg(kEditorOuterBottom)
-       .arg(kEditorOuterLeft)
-       .arg(kEditorVerticalPadding)
-       .arg(kEditorHorizontalPadding)
-       .arg(UiConfig::OutlineStrokeWidth));
+       .arg(editorRadius)
+       .arg(editorOuterTop)
+       .arg(editorOuterRight)
+       .arg(editorOuterBottom)
+       .arg(editorOuterLeft)
+       .arg(editorVerticalPadding)
+       .arg(editorHorizontalPadding)
+       .arg(editorStrokeWidth));
     setPalette(pal);
     document()->setDocumentMargin(kEditorDocumentMargin);
     viewport()->setStyleSheet(QStringLiteral("background: transparent;"));

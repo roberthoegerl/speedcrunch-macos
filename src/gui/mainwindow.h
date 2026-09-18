@@ -72,6 +72,7 @@ signals:
     void resultPrecisionChanged();
     void resultRoundingModeChanged();
     void syntaxHighlightingChanged();
+    void classicAppearanceChanged();
     void historyChanged();
     void variablesChanged();
     void functionsChanged();
@@ -214,6 +215,7 @@ private slots:
     void setMenuBarVisible(bool);
     void setStatusBarVisible(bool);
     void setSyntaxHighlightingEnabled(bool);
+    void setClassicAppearanceEnabled(bool);
     void setDigitGrouping(QAction*);
     void setDigitGroupingIntegerPartOnlyEnabled(bool);
     void setAutoResultToClipboardEnabled(bool);
@@ -502,6 +504,7 @@ private:
         QAction* settingsDisplayZoomIn;
         QAction* settingsDisplayZoomOut;
         QAction* settingsDisplayFont;
+        QAction* settingsDisplayClassicAppearance;
         QAction* settingsDisplayColorSchemeCustom;
         QVector<QAction*> settingsDisplayColorSchemes;
         QAction* settingsRadixCharDefault;

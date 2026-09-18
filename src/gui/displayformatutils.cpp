@@ -9,6 +9,7 @@
 #include "core/regexpatterns.h"
 #include "core/unicodechars.h"
 #include "core/mathdsl.h"
+#include "core/settings.h"
 
 namespace DisplayFormatUtils {
 
@@ -71,20 +72,25 @@ bool tokenCanStartOperandForSpacing(const Token& token)
 
 QString spacingForBinaryOperator(const Token& token, const QString& operatorText)
 {
+    // Classic (0.12) appearance renders operators tight (no surrounding spaces).
+    const bool tight = Settings::instance()->classicAppearance;
+    const auto wrap = [tight](const QChar& op, const QChar& space) {
+        return tight ? QString(op) : MathDsl::buildWrappedToken(op, space);
+    };
     const Token::Operator op = token.asOperator();
     switch (op) {
     case Token::Addition:
-        return MathDsl::buildWrappedToken(MathDsl::AddOp, MathDsl::AddWrap);
+        return wrap(MathDsl::AddOp, MathDsl::AddWrap);
     case Token::Subtraction:
-        return MathDsl::buildWrappedToken(MathDsl::SubOp, MathDsl::SubWrapSp);
+        return wrap(MathDsl::SubOp, MathDsl::SubWrapSp);
     case Token::Division:
-        return MathDsl::buildWrappedToken(MathDsl::DivOp, MathDsl::DivWrap);
+        return wrap(MathDsl::DivOp, MathDsl::DivWrap);
     case Token::Multiplication: {
         const bool useCrossSign = operatorText == QString(MathDsl::MulCrossOp)
             || operatorText == QStringLiteral("*");
         const QChar sign = useCrossSign ? MathDsl::MulCrossOp : MathDsl::MulDotOp;
         const QChar space = useCrossSign ? MathDsl::MulCrossWrapSp : MathDsl::MulDotWrapSp;
-        return MathDsl::buildWrappedToken(sign, space);
+        return wrap(sign, space);
     }
     default:
         return token.text();
