@@ -30,10 +30,10 @@ AboutBox::AboutBox(QWidget* parent, Qt::WindowFlags f)
     msg += "<small>" + tr("Build %1").arg(QLatin1String(SPEEDCRUNCH_BUILD_ID)) + "</small><br>";
 #endif
 #if defined(__APPLE__)
-    msg += "<small>" + tr("Unofficial macOS build (Apple Silicon / arm64) — "
-                          "not an official SpeedCrunch release.")
-         + " (GitHub: @roberthoegerl)<br>"
-         + tr("Adds an optional Classic Appearance mode (Settings ▸ Appearance).")
+    msg += "<small>" + tr("Unofficial macOS build for Apple Silicon / arm64,") + "<br/>"
+         + tr("adding an optional Classic Appearance mode") + "<br/>"
+         + "[forked from commit: b598d91d, 2026-08-28]<br/>"
+         + "(Github: @roberthoegerl)"
          + "</small><br>";
 #endif
 
