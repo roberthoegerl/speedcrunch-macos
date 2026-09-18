@@ -1,74 +1,44 @@
-# SpeedCrunch
-SpeedCrunch is a high-precision scientific calculator.
-Current stable version: 1.0.
-It features a syntax-highlighted scrollable display and is designed to be fully used via keyboard. Some distinctive
-features are auto-completion of functions and variables, a formula book, and quick
-insertion of constants from various fields of knowledge. It is available for Windows, macOS,
-and Linux in a number of languages.
+# SpeedCrunch for macOS (Apple Silicon & Intel)
 
-![capture.png](https://bitbucket.org/repo/dR7BnG/images/3654665019-capture.png)
+[SpeedCrunch](https://speedcrunch.org) has been my daily calculator of choice for many years. The
+last official Mac release (0.12, 2016) is Intel-only and blurry on Retina screens, so I built
+current versions for modern Macs, with the help of Claude Code. Not affiliated with the upstream
+project.
 
-## Building
-To build SpeedCrunch, you need:
+This build fixes the font rendering on Retina displays (using the
+[fix](https://github.com/yifany-github/speedcrunch_highResolusion_mac) already present in the
+[original](https://bitbucket.org/heldercorreia/speedcrunch/commits/928c22c0ba21974c0f87201f24a4e5f6de05fb77)
+source) and adds an optional Classic Appearance toggle for a more compact interface.
 
-- A C++17-capable compiler
-- [Qt](http://qt.io) 6.x (Core, Widgets, Help, Network)
-- [CMake](http://cmake.org) 3.16 or later
+## Download
 
-To build SpeedCrunch in a dedicated build directory and install it, run the following
-commands from the root of the source directory:
+**[Get the latest release](https://github.com/roberthoegerl/speedcrunch-macos/releases/latest)**
+(on GitHub, downloads are under "Releases", on the right of the page).
 
-    mkdir build
-    cd build
-    cmake ../src
-    make install
+- Apple Silicon (M1/M2/M3/M4): `...-macOS-arm64.dmg`
+- Intel: `...-macOS-x86_64.dmg`
 
-When building against a Qt version that is not the system default Qt installation,
-point CMake towards the Qt installation to use by setting `CMAKE_PREFIX_PATH` or
-`Qt6_DIR` when running CMake.
+## First launch
 
-Example (Homebrew on macOS):
+As I don't have an Apple Developer account, this release is not notarized by Apple, so to open right-click the app, choose Open, then Open again. This extra step is necessary once only.
 
-    brew install qt
-    mkdir build
-    cd build
-    cmake ../src -DCMAKE_PREFIX_PATH="$(brew --prefix qt)"
-    make
+## What's different from 0.12
 
-You can customize the build using the following variables. These are specified when
-running CMake, in the form `cmake ../src -Dvariable=value`.
+- Native Apple Silicon (arm64), no Rosetta needed.
+- Retina text-rendering fix included (it was in the source but not in the 0.12 download).
+- Built from the current 1.0 codebase, plus an optional Classic Appearance toggle (off by default).
 
-- **PORTABLE_SPEEDCRUNCH**: Set this to `on` to have the application settings stored
-  in the same location as the executable, e.g. for running from a USB drive without
-  requiring installation.
-- **CMAKE_INSTALL_PREFIX**: Change the installation prefix for SpeedCrunch.
-- **HTML_DOCS_DIR**: Change the path to the HTML manual that's embedded in the binary
-  by the build. By default, a bundled prebuilt copy is used to minimize dependencies.
+## Build
 
-## Building the manual
-Building the HTML manual is normally not necessary because a prebuilt copy is included
-with the SpeedCrunch source. For more information, see the [manual's README](doc/src/README.md).
+Version 1.0 (`1.0-604-g3aa5f060`), Qt 6.11.2, requires macOS 13 or newer.
 
-## Contributing
-- Report bugs or request features in the
-  [issue tracker](https://bitbucket.org/heldercorreia/speedcrunch/issues).
-- Add or improve a [translation](https://www.transifex.com/projects/p/speedcrunch/).
-- Send a message to the [forum](https://groups.google.com/group/speedcrunch).
-- Follow the news on the [blog](http://speedcrunch.blogspot.com).
+Based on upstream `master` commit
+[`b598d91d`](https://bitbucket.org/heldercorreia/speedcrunch/commits/b598d91db29333eb3536ff0fe86c2abcfe5c6ad8).
+
+Compiled and published September 2026.
 
 ## License
-This program is free software; you can redistribute it and/or modify it
-under the terms of the GNU General Public License as published by the
-Free Software Foundation; either version 2 of the License, or (at your
-option) any later version.
 
-This program is distributed in the hope that it will be useful, but
-WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
-or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
-for more details.
-
-You should have received a copy of the GNU General Public License along
-with this program; see the file COPYING.  If not, write to the Free
-Software Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
-MA 02110-1301, USA.
-
+GPL v2 ([LICENSE](LICENSE)). Full source is in this repo. SpeedCrunch is by Helder Correia and
+contributors ([source](https://bitbucket.org/heldercorreia/speedcrunch)); this is an independent
+build by [@roberthoegerl](https://github.com/roberthoegerl).
