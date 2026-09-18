@@ -961,7 +961,7 @@ void ResultDisplay::applyClassicSeparatorSpacing()
     if (!Settings::instance()->classicAppearance)
         return;
     // Compact the blank separator paragraphs in classic mode: 56% line height
-    // between history entries and 35% for the trailing separator just above the
+    // between history entries and 26% for the trailing separator just above the
     // input editor. Non-classic never enters here, and a later non-classic
     // rebuild recreates the blocks with default (full) spacing.
     const int lastBlockNumber = document()->lastBlock().blockNumber();
@@ -970,7 +970,7 @@ void ResultDisplay::applyClassicSeparatorSpacing()
         if (!block.text().isEmpty())
             continue;
         QTextBlockFormat fmt = block.blockFormat();
-        const qreal percent = (block.blockNumber() == lastBlockNumber) ? 35.0 : 56.0;
+        const qreal percent = (block.blockNumber() == lastBlockNumber) ? 26.0 : 56.0;
         fmt.setLineHeight(percent, QTextBlockFormat::ProportionalHeight);
         cursor.setPosition(block.position());
         cursor.mergeBlockFormat(fmt);
@@ -2178,7 +2178,11 @@ void ResultDisplay::updateHoverHighlightSelection()
         }
     };
 
-    if (m_hoverHighlightEnabled && m_hoveredHistoryIndex >= 0)
+    // Classic appearance suppresses the hover row background band, but keeps
+    // m_hoveredHistoryIndex (and thus the hover action buttons/popup) working.
+    // The editing-row highlight is unaffected.
+    const bool showHoverBackground = !Settings::instance()->classicAppearance;
+    if (m_hoverHighlightEnabled && m_hoveredHistoryIndex >= 0 && showHoverBackground)
         appendSelectionForHistoryIndex(m_hoveredHistoryIndex);
     if (m_editingHistoryIndex >= 0 && (!m_hoverHighlightEnabled || m_editingHistoryIndex != m_hoveredHistoryIndex))
         appendSelectionForHistoryIndex(m_editingHistoryIndex);
