@@ -10738,13 +10738,13 @@ void MainWindow::showStateLabel(const QString& msg)
     m_widgets.state->show();
     m_widgets.state->raise();
     const int height = m_widgets.state->height();
-    // In classic mode align the popup's left edge with the input text (accounting
-    // for the classic editor padding), rather than the 1.0 tooltip inset.
-    const int leftMargin = classicAppearance
-        ? positionEditor->textLeftInset()
-        : UiConfig::ResultTooltipStartMargin;
     QPoint pos = mapFromGlobal(
-        positionEditor->mapToGlobal(QPoint(leftMargin, -height)));
+        positionEditor->mapToGlobal(QPoint(UiConfig::ResultTooltipStartMargin, -height)));
+    // In classic mode the popup box sits flush at the window's left edge (x = 0),
+    // like the old design; its internal padding is unchanged. Non-classic keeps
+    // the 1.0 tooltip inset.
+    if (classicAppearance)
+        pos.setX(0);
     m_widgets.state->move(pos);
 }
 

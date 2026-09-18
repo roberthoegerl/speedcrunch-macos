@@ -2188,8 +2188,11 @@ void Editor::autoCalc()
         } else {
             QString message;
             if (Settings::instance()->classicAppearance) {
+                // Value is bold (already HTML-escaped); label stays normal weight.
                 message = tr("Current result: %1").arg(
-                    classicLiveResultValue(quantity, str, interpretedExpr, text(), m_evaluator));
+                    QStringLiteral("<b>")
+                    + classicLiveResultValue(quantity, str, interpretedExpr, text(), m_evaluator)
+                    + QStringLiteral("</b>"));
             } else {
                 const auto formatted =
                     formattedLiveResultWithAlternatives(
@@ -2228,8 +2231,11 @@ void Editor::autoCalc()
                     } else {
                         QString message;
                         if (Settings::instance()->classicAppearance) {
+                            // Value is bold (already HTML-escaped); label stays normal weight.
                             message = tr("Current result: %1").arg(
-                                classicLiveResultValue(baseQuantity, baseExpression, interpretedExpr, text(), m_evaluator));
+                                QStringLiteral("<b>")
+                                + classicLiveResultValue(baseQuantity, baseExpression, interpretedExpr, text(), m_evaluator)
+                                + QStringLiteral("</b>"));
                         } else {
                             const auto formatted =
                                 formattedLiveResultWithAlternatives(
