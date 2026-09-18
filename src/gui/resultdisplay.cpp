@@ -960,17 +960,17 @@ void ResultDisplay::applyClassicSeparatorSpacing()
 {
     if (!Settings::instance()->classicAppearance)
         return;
-    // Compact the blank separator paragraphs in classic mode: ~30% smaller
-    // between history entries, and ~50% smaller for the trailing separator just
-    // above the input editor. Non-classic never enters here, and a later
-    // non-classic rebuild recreates the blocks with default (full) spacing.
+    // Compact the blank separator paragraphs in classic mode: 56% line height
+    // between history entries and 35% for the trailing separator just above the
+    // input editor. Non-classic never enters here, and a later non-classic
+    // rebuild recreates the blocks with default (full) spacing.
     const int lastBlockNumber = document()->lastBlock().blockNumber();
     QTextCursor cursor(document());
     for (QTextBlock block = document()->firstBlock(); block.isValid(); block = block.next()) {
         if (!block.text().isEmpty())
             continue;
         QTextBlockFormat fmt = block.blockFormat();
-        const qreal percent = (block.blockNumber() == lastBlockNumber) ? 50.0 : 70.0;
+        const qreal percent = (block.blockNumber() == lastBlockNumber) ? 35.0 : 56.0;
         fmt.setLineHeight(percent, QTextBlockFormat::ProportionalHeight);
         cursor.setPosition(block.position());
         cursor.mergeBlockFormat(fmt);
