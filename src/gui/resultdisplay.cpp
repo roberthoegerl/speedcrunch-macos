@@ -48,6 +48,9 @@
 namespace {
 constexpr int kResultDisplayHorizontalPadding = 14;
 constexpr int kResultDisplayFadeHeight = 28;
+// Classic (0.12) appearance: history text left edge should line up with the input
+// editor text (Editor::textLeftInset() == classic h-padding 4 + doc margin 2 == 6).
+constexpr int kResultDisplayClassicLeftInset = 6;
 
 struct ResultDisplayScrollBarColors
 {
@@ -714,6 +717,15 @@ void ResultDisplay::rehighlight()
     viewport()->setPalette(viewportPalette);
     viewport()->setAutoFillBackground(true);
     viewport()->setAttribute(Qt::WA_StyledBackground, true);
+
+    // Classic mode: reduce the left inset so history text is flush-left with the
+    // input editor text; keep the right inset for scrollbar spacing. Non-classic
+    // keeps the original symmetric padding.
+    const int docMargin = qRound(document()->documentMargin());
+    const int leftPadding = Settings::instance()->classicAppearance
+        ? qMax(0, kResultDisplayClassicLeftInset - docMargin)
+        : kResultDisplayHorizontalPadding;
+    setViewportMargins(leftPadding, 0, kResultDisplayHorizontalPadding, 0);
 
     updateSurfaceStyleSheet();
     updateScrollBarStyleSheet();

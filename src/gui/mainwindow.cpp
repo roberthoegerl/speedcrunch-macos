@@ -10674,7 +10674,8 @@ void MainWindow::showStateLabel(const QString& msg)
         const QColor fg = QToolTip::palette().color(QPalette::ToolTipText);
         const QColor border = QApplication::palette().color(QPalette::Mid);
         m_widgets.state->setStyleSheet(QStringLiteral(
-            "QLabel { background-color: %1; color: %2; border: 1px solid %3; border-radius: 0px; }")
+            "QLabel { background-color: %1; color: %2; border: 1px solid %3;"
+            " border-radius: 0px; padding: 0px; }")
             .arg(bg.name(), fg.name(), border.name()));
     } else {
         m_widgets.state->setStyleSheet(ToolTipStyleUtils::labelToolTipStyleSheet(
@@ -10717,9 +10718,9 @@ void MainWindow::showStateLabel(const QString& msg)
     const int closeButtonTopPadding = 1;
     const int closeButtonReservedWidth = closeButtonSize + closeButtonRightPadding + 2;
     if (classicAppearance) {
-        // No close button in classic mode: keep symmetric compact margins.
+        // No close button in classic mode: hug the text with small symmetric padding.
         m_widgets.stateCloseButton->hide();
-        m_widgets.state->setContentsMargins(6, 3, 6, 3);
+        m_widgets.state->setContentsMargins(4, 1, 4, 1);
     } else {
         m_widgets.state->setContentsMargins(6, 3, closeButtonReservedWidth, 3);
     }
