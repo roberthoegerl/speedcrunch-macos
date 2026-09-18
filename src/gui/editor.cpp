@@ -60,11 +60,19 @@ constexpr int kEditorVerticalPadding = 10;
 constexpr int kEditorRadius = 13;
 constexpr int kEditorCursorWidth = 2;
 constexpr int kEditorDocumentMargin = 2;
+// Classic (0.12) appearance: no accent frame, minimal padding, flush single-line height.
+constexpr int kEditorClassicVerticalPadding = 2;
+constexpr int kEditorClassicHorizontalPadding = 4;
 
 static QPointer<Editor> s_completionMouseSelectionOwner;
 
 static int editorVerticalDecorationHeight()
 {
+    // Classic mode has no outer frame/margins, so only the small padding and the
+    // document margin contribute; this collapses the field to true single-line
+    // height (no phantom extra line below the text).
+    if (Settings::instance()->classicAppearance)
+        return 2 * kEditorClassicVerticalPadding + 2 * kEditorDocumentMargin;
     return kEditorOuterTop + kEditorOuterBottom + 2 * kEditorVerticalPadding
            + 2 * kEditorDocumentMargin + 2;
 }
@@ -1246,6 +1254,25 @@ static QString formattedLiveResultWithAlternatives(const Quantity& quantity,
     return escapedLines.join(QStringLiteral("<br/>"));
 }
 
+// Classic (0.12) appearance shows the auto-calc preview on a single line as
+// "Current result: <value>" — only the numeric value, no expression line, no "=".
+static QString classicLiveResultValue(const Quantity& quantity,
+                                      const QString& expression,
+                                      const QString& interpretedExpression,
+                                      const QString& sourceExpression,
+                                      const Evaluator* evaluator)
+{
+    const QString source = sourceExpression.isEmpty() ? expression : sourceExpression;
+    const QStringList lines = ResultLineFormatUtils::formatResultLinesForDisplay(
+        source, interpretedExpression, quantity, /*includeExpressionLine=*/false,
+        /*stripUnitBracketsInNumericLines=*/true, evaluator);
+    for (const QString& line : lines) {
+        if (line.startsWith(QStringLiteral("= ")))
+            return line.mid(2).toHtmlEscaped();
+    }
+    return lines.isEmpty() ? QString() : lines.last().toHtmlEscaped();
+}
+
 static QString simplifiedExpressionLineForTooltip(const QString& interpretedExpression,
                                                   const QString& sourceExpression,
                                                   const Evaluator* evaluator)
@@ -2151,10 +2178,16 @@ void Editor::autoCalc()
             // comment-only expressions.
             emit autoCalcDisabled();
         } else {
-            const auto formatted =
-                formattedLiveResultWithAlternatives(
-                    quantity, str, interpretedExpr, simplifiedLine, text(), m_evaluator);
-            auto message = tr("Current result:<br/>%1").arg(formatted);
+            QString message;
+            if (Settings::instance()->classicAppearance) {
+                message = tr("Current result: %1").arg(
+                    classicLiveResultValue(quantity, str, interpretedExpr, text(), m_evaluator));
+            } else {
+                const auto formatted =
+                    formattedLiveResultWithAlternatives(
+                        quantity, str, interpretedExpr, simplifiedLine, text(), m_evaluator);
+                message = tr("Current result:<br/>%1").arg(formatted);
+            }
             emit autoCalcMessageAvailable(message);
             emit autoCalcQuantityAvailable(quantity);
         }
@@ -2185,10 +2218,16 @@ void Editor::autoCalc()
                         || Evaluator::isCommentOnlyExpression(baseExpression))) {
                         emit autoCalcDisabled();
                     } else {
-                        const auto formatted =
-                            formattedLiveResultWithAlternatives(
-                                baseQuantity, baseExpression, interpretedExpr, simplifiedLine, text(), m_evaluator);
-                        auto message = tr("Current result:<br/>%1").arg(formatted);
+                        QString message;
+                        if (Settings::instance()->classicAppearance) {
+                            message = tr("Current result: %1").arg(
+                                classicLiveResultValue(baseQuantity, baseExpression, interpretedExpr, text(), m_evaluator));
+                        } else {
+                            const auto formatted =
+                                formattedLiveResultWithAlternatives(
+                                    baseQuantity, baseExpression, interpretedExpr, simplifiedLine, text(), m_evaluator);
+                            message = tr("Current result:<br/>%1").arg(formatted);
+                        }
                         emit autoCalcMessageAvailable(message);
                         emit autoCalcQuantityAvailable(baseQuantity);
                     }
@@ -3885,8 +3924,8 @@ void Editor::rehighlight()
     const int editorOuterRight = classicAppearance ? 0 : kEditorOuterRight;
     const int editorOuterBottom = classicAppearance ? 0 : kEditorOuterBottom;
     const int editorOuterLeft = classicAppearance ? 0 : kEditorOuterLeft;
-    const int editorVerticalPadding = classicAppearance ? 2 : kEditorVerticalPadding;
-    const int editorHorizontalPadding = classicAppearance ? 4 : kEditorHorizontalPadding;
+    const int editorVerticalPadding = classicAppearance ? kEditorClassicVerticalPadding : kEditorVerticalPadding;
+    const int editorHorizontalPadding = classicAppearance ? kEditorClassicHorizontalPadding : kEditorHorizontalPadding;
     QPalette pal = palette();
     for (const QPalette::ColorGroup group : {QPalette::Active,
                                              QPalette::Inactive,
@@ -3936,6 +3975,26 @@ void Editor::rehighlight()
     viewport()->setPalette(viewportPalette);
     clearMask();
     m_highlighter->rehighlight();
+}
+
+void Editor::reflowForAppearanceChange()
+{
+    // Re-space the current input to match the active appearance mode: tight
+    // operators in classic mode, spaced otherwise. applyOperatorSpacingForDisplay
+    // is gated on the same setting and leaves invalid/partial input untouched.
+    const QString current = text();
+    if (!current.isEmpty()) {
+        const QString reflowed = DisplayFormatUtils::applyOperatorSpacingForDisplay(current);
+        if (reflowed != current) {
+            setPlainText(reflowed);
+            QTextCursor cursor = textCursor();
+            cursor.movePosition(QTextCursor::End);
+            setTextCursor(cursor);
+        }
+    }
+    // The single-line height depends on the appearance mode (see
+    // editorVerticalDecorationHeight), so recompute it now.
+    updateHeightForWrappedText();
 }
 
 void Editor::setThemeSurfaceColor(const QColor& color, const QColor& outerColor)

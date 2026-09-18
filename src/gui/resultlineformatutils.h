@@ -829,7 +829,36 @@ inline QString conversionTargetSuffixForDisplay(const QString& expression)
     return QStringLiteral(" \u2192 ") + target;
 }
 
-inline QString formattedExpressionLineForDisplay(const QString& sourceExpression,
+// Classic (0.12) appearance renders expressions with tight operators. The display
+// string uses regular ASCII spaces (0x20) only to pad binary operators, while
+// units use a non-breaking space and argument separators use "; ", so removing a
+// single ASCII space adjacent to an operator glyph tightens operators without
+// touching unit/quantity or separator spacing. Applied only when classic is on.
+inline QString tightenOperatorsForClassicDisplay(const QString& s)
+{
+    if (!Settings::instance()->classicAppearance)
+        return s;
+    auto isTightenableOp = [](const QChar& c) {
+        return c == MathDsl::MulCrossOp || c == MathDsl::MulDotOp
+            || c == MathDsl::AddOp || c == MathDsl::SubOp || c == MathDsl::SubOpAl1
+            || c == MathDsl::DivOp;
+    };
+    QString out;
+    out.reserve(s.size());
+    for (int i = 0; i < s.size(); ++i) {
+        const QChar c = s.at(i);
+        if (c == QLatin1Char(' ')) {
+            const QChar prev = out.isEmpty() ? QChar() : out.back();
+            const QChar next = (i + 1 < s.size()) ? s.at(i + 1) : QChar();
+            if (isTightenableOp(prev) || isTightenableOp(next))
+                continue;
+        }
+        out += c;
+    }
+    return out;
+}
+
+inline QString formattedExpressionLineForDisplayImpl(const QString& sourceExpression,
                                                  const QString& interpretedExpression,
                                                  const Evaluator* evaluator = nullptr)
 {
@@ -877,6 +906,14 @@ inline QString formattedExpressionLineForDisplay(const QString& sourceExpression
                     sourceExpression),
                 sourceExpression),
                 sourceExpression)));
+}
+
+inline QString formattedExpressionLineForDisplay(const QString& sourceExpression,
+                                                 const QString& interpretedExpression,
+                                                 const Evaluator* evaluator = nullptr)
+{
+    return tightenOperatorsForClassicDisplay(
+        formattedExpressionLineForDisplayImpl(sourceExpression, interpretedExpression, evaluator));
 }
 
 inline QString trimTrailingFractionZeros(QString text)

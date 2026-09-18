@@ -5106,6 +5106,8 @@ void MainWindow::configureEditorDisplayPane(ResultDisplay* display, Editor* edit
     connect(this, &MainWindow::syntaxHighlightingChanged, editor, &Editor::rehighlight);
     connect(this, &MainWindow::classicAppearanceChanged, display, &ResultDisplay::rehighlight);
     connect(this, &MainWindow::classicAppearanceChanged, editor, &Editor::rehighlight);
+    connect(this, &MainWindow::classicAppearanceChanged, display, &ResultDisplay::reRenderAll);
+    connect(this, &MainWindow::classicAppearanceChanged, editor, &Editor::reflowForAppearanceChange);
 }
 
 void MainWindow::splitActivePane(Qt::Orientation orientation, bool insertAfter)
@@ -7358,6 +7360,8 @@ void MainWindow::createFixedConnections()
     connect(this, SIGNAL(syntaxHighlightingChanged()), m_widgets.editor, SLOT(rehighlight()));
     connect(this, SIGNAL(classicAppearanceChanged()), m_widgets.display, SLOT(rehighlight()));
     connect(this, SIGNAL(classicAppearanceChanged()), m_widgets.editor, SLOT(rehighlight()));
+    connect(this, SIGNAL(classicAppearanceChanged()), m_widgets.display, SLOT(reRenderAll()));
+    connect(this, SIGNAL(classicAppearanceChanged()), m_widgets.editor, SLOT(reflowForAppearanceChange()));
 
     connect(m_actions.settingsDisplayFont, SIGNAL(triggered()), SLOT(showFontDialog()));
     connect(m_actions.settingsDisplayColorSchemeCustom, SIGNAL(triggered()), SLOT(showCustomThemeDialog()));
@@ -7616,10 +7620,13 @@ void MainWindow::applySettings()
     else
         setHoverHighlightResultsEnabled(false);
 
-    if (m_settings->classicAppearance)
-        m_actions.settingsDisplayClassicAppearance->setChecked(true);
-    else
-        setClassicAppearanceEnabled(false);
+    {
+        // Reflect the persisted state on the menu without emitting the change
+        // signal: the initial render already reads classicAppearance through the
+        // gated formatters, so no runtime re-render/reflow is needed at startup.
+        QSignalBlocker classicBlocker(m_actions.settingsDisplayClassicAppearance);
+        m_actions.settingsDisplayClassicAppearance->setChecked(m_settings->classicAppearance);
+    }
 
     if (m_settings->autoResultToClipboard)
         m_actions.settingsBehaviorAutoResultToClipboard->setChecked(true);
@@ -10645,32 +10652,43 @@ void MainWindow::showStateLabel(const QString& msg)
         themeSurfaceForShadeIndex(surfaces, UiConfig::ResultTooltipBackgroundShade);
     const ThemeSurfaceColors tooltipOutline =
         themeSurfaceForShadeIndex(surfaces, UiConfig::ResultTooltipOutlineShade);
-    m_widgets.state->setStyleSheet(ToolTipStyleUtils::labelToolTipStyleSheet(
-        QStringLiteral("QLabel"),
-        tooltipSurface.background,
-        tooltipSurface.foreground,
-        tooltipOutline.background,
-        classicAppearance ? 0 : UiConfig::ResultTooltipCornerRadius));
-    m_widgets.stateCloseButton->setStyleSheet(QStringLiteral(R"(
-        QPushButton {
-            border: none;
-            background: transparent;
-            color: %1;
-            padding: 0;
-            margin: 0;
-            outline: none;
-        }
+    if (classicAppearance) {
+        // Plain neutral tooltip (like a standard system tooltip), not the 1.0
+        // filled accent pill; the close button is hidden in this mode.
+        const QColor bg = QToolTip::palette().color(QPalette::ToolTipBase);
+        const QColor fg = QToolTip::palette().color(QPalette::ToolTipText);
+        const QColor border = QApplication::palette().color(QPalette::Mid);
+        m_widgets.state->setStyleSheet(QStringLiteral(
+            "QLabel { background-color: %1; color: %2; border: 1px solid %3; border-radius: 0px; }")
+            .arg(bg.name(), fg.name(), border.name()));
+    } else {
+        m_widgets.state->setStyleSheet(ToolTipStyleUtils::labelToolTipStyleSheet(
+            QStringLiteral("QLabel"),
+            tooltipSurface.background,
+            tooltipSurface.foreground,
+            tooltipOutline.background,
+            UiConfig::ResultTooltipCornerRadius));
+        m_widgets.stateCloseButton->setStyleSheet(QStringLiteral(R"(
+            QPushButton {
+                border: none;
+                background: transparent;
+                color: %1;
+                padding: 0;
+                margin: 0;
+                outline: none;
+            }
 
-        QPushButton:hover {
-            background: transparent;
-            color: %1;
-        }
+            QPushButton:hover {
+                background: transparent;
+                color: %1;
+            }
 
-        QPushButton:pressed {
-            background: transparent;
-            color: %1;
-        }
-    )").arg(tooltipSurface.foreground.name()));
+            QPushButton:pressed {
+                background: transparent;
+                color: %1;
+            }
+        )").arg(tooltipSurface.foreground.name()));
+    }
 
     Editor* positionEditor = m_widgets.editor;
     if (positionEditor == nullptr || positionEditor->window() != this)
@@ -10683,16 +10701,24 @@ void MainWindow::showStateLabel(const QString& msg)
     const int closeButtonRightPadding = 2;
     const int closeButtonTopPadding = 1;
     const int closeButtonReservedWidth = closeButtonSize + closeButtonRightPadding + 2;
-    m_widgets.state->setContentsMargins(6, 3, closeButtonReservedWidth, 3);
+    if (classicAppearance) {
+        // No close button in classic mode: keep symmetric compact margins.
+        m_widgets.stateCloseButton->hide();
+        m_widgets.state->setContentsMargins(6, 3, 6, 3);
+    } else {
+        m_widgets.state->setContentsMargins(6, 3, closeButtonReservedWidth, 3);
+    }
     m_widgets.state->setFont(stateFont);
     m_widgets.state->setText(msg);
-    m_widgets.stateCloseButton->setFixedSize(closeButtonSize, closeButtonSize);
     m_widgets.state->adjustSize();
-    m_widgets.stateCloseButton->move(
-        m_widgets.state->width() - closeButtonSize - closeButtonRightPadding,
-        closeButtonTopPadding);
-    m_widgets.stateCloseButton->show();
-    m_widgets.stateCloseButton->raise();
+    if (!classicAppearance) {
+        m_widgets.stateCloseButton->setFixedSize(closeButtonSize, closeButtonSize);
+        m_widgets.stateCloseButton->move(
+            m_widgets.state->width() - closeButtonSize - closeButtonRightPadding,
+            closeButtonTopPadding);
+        m_widgets.stateCloseButton->show();
+        m_widgets.stateCloseButton->raise();
+    }
     m_widgets.state->show();
     m_widgets.state->raise();
     const int height = m_widgets.state->height();

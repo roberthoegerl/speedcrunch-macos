@@ -105,6 +105,7 @@ public slots:
     void insert(const QString&);
     void insertConstant(const QString&);
     void rehighlight();
+    void reflowForAppearanceChange();
     void updateHistory();
     void refreshAutoCalc();
 

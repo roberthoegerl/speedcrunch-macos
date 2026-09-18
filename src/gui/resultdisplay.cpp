@@ -927,6 +927,16 @@ QColor ResultDisplay::hoverActionIconColor(HoveredActionBadge badge) const
 }
 
 
+void ResultDisplay::reRenderAll()
+{
+    // Force a full rebuild of all history lines through the formatter so that a
+    // change like the Classic Appearance toggle re-tightens/re-spaces existing
+    // operators. clear() resets the render counters; refresh() then rebuilds.
+    clear();
+    refresh();
+    scrollToBottom();
+}
+
 void ResultDisplay::refresh()
 {
     const Session* session = displaySession(this);
