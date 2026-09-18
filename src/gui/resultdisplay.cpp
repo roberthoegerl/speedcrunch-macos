@@ -642,6 +642,7 @@ void ResultDisplay::append(const QString& expression, Quantity& value,
     }
     appendPlainText(QLatin1String(""));
     markHistoryBlockIndexCacheDirty();
+    applyClassicSeparatorSpacing();
 }
 
 int ResultDisplay::count() const
@@ -951,6 +952,33 @@ void ResultDisplay::reRenderAll()
 
 void ResultDisplay::refresh()
 {
+    refreshDocument();
+    applyClassicSeparatorSpacing();
+}
+
+void ResultDisplay::applyClassicSeparatorSpacing()
+{
+    if (!Settings::instance()->classicAppearance)
+        return;
+    // Compact the blank separator paragraphs in classic mode: ~30% smaller
+    // between history entries, and ~50% smaller for the trailing separator just
+    // above the input editor. Non-classic never enters here, and a later
+    // non-classic rebuild recreates the blocks with default (full) spacing.
+    const int lastBlockNumber = document()->lastBlock().blockNumber();
+    QTextCursor cursor(document());
+    for (QTextBlock block = document()->firstBlock(); block.isValid(); block = block.next()) {
+        if (!block.text().isEmpty())
+            continue;
+        QTextBlockFormat fmt = block.blockFormat();
+        const qreal percent = (block.blockNumber() == lastBlockNumber) ? 50.0 : 70.0;
+        fmt.setLineHeight(percent, QTextBlockFormat::ProportionalHeight);
+        cursor.setPosition(block.position());
+        cursor.mergeBlockFormat(fmt);
+    }
+}
+
+void ResultDisplay::refreshDocument()
+{
     const Session* session = displaySession(this);
     if (session == nullptr) {
         clear();
@@ -1117,6 +1145,7 @@ void ResultDisplay::refreshLastHistoryEntry()
     markHistoryBlockIndexCacheDirty();
     updateHoverHighlightSelection();
     updateScrollToBottomButtonVisibility();
+    applyClassicSeparatorSpacing();
 }
 
 void ResultDisplay::scrollLines(int numberOfLines)

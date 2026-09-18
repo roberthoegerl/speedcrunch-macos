@@ -37,6 +37,30 @@ endif()
 
 set(speedcrunch_VERSION "1.0")
 
+# Extended build identifier for the About dialog only (NOT the internal
+# SPEEDCRUNCH_VERSION used by the update check). Form: <version>-<N>-g<short>,
+# where N is the commit count since the commit that set version 1.0 (2a997f04).
+# Falls back to just the version for non-git / shallow builds.
+set(speedcrunch_BUILD_ID "${speedcrunch_VERSION}")
+find_package(Git QUIET)
+if(GIT_FOUND)
+    execute_process(
+        COMMAND "${GIT_EXECUTABLE}" rev-list --count 2a997f04..HEAD
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        OUTPUT_VARIABLE _sc_build_count OUTPUT_STRIP_TRAILING_WHITESPACE
+        RESULT_VARIABLE _sc_build_count_rc ERROR_QUIET)
+    execute_process(
+        COMMAND "${GIT_EXECUTABLE}" rev-parse --short=8 HEAD
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        OUTPUT_VARIABLE _sc_build_short OUTPUT_STRIP_TRAILING_WHITESPACE
+        RESULT_VARIABLE _sc_build_short_rc ERROR_QUIET)
+    if(_sc_build_count_rc EQUAL 0 AND _sc_build_short_rc EQUAL 0
+            AND _sc_build_count AND _sc_build_short)
+        set(speedcrunch_BUILD_ID "${speedcrunch_VERSION}-${_sc_build_count}-g${_sc_build_short}")
+    endif()
+endif()
+message(STATUS "SpeedCrunch build id: ${speedcrunch_BUILD_ID}")
+
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_COLOR_MAKEFILE ON)
@@ -46,6 +70,7 @@ set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 set(CMAKE_MACOSX_RPATH ON)
 
 ADD_DEFINITIONS("-DSPEEDCRUNCH_VERSION=\"${speedcrunch_VERSION}\"")
+ADD_DEFINITIONS("-DSPEEDCRUNCH_BUILD_ID=\"${speedcrunch_BUILD_ID}\"")
 ADD_DEFINITIONS(-DQT_USE_QSTRINGBUILDER)
 
 include(SourceFiles.cmake)

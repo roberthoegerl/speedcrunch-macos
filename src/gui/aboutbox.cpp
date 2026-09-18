@@ -26,6 +26,17 @@ AboutBox::AboutBox(QWidget* parent, Qt::WindowFlags f)
 #endif
     msg += "</b><br>(Qt " + QLatin1String(QT_VERSION_STR) + ")<br>";
 
+#ifdef SPEEDCRUNCH_BUILD_ID
+    msg += "<small>" + tr("Build %1").arg(QLatin1String(SPEEDCRUNCH_BUILD_ID)) + "</small><br>";
+#endif
+#if defined(__APPLE__)
+    msg += "<small>" + tr("Unofficial macOS build (Apple Silicon / arm64) — "
+                          "not an official SpeedCrunch release.")
+         + " (GitHub: @roberthoegerl)<br>"
+         + tr("Adds an optional Classic Appearance mode (Settings ▸ Appearance).")
+         + "</small><br>";
+#endif
+
     const QString authors = "<p><b>%1</b><br>%2";
     msg += authors.arg(tr("Main author | Logo | Maintainer"), "Helder Correia (@heldercorreia)");
 

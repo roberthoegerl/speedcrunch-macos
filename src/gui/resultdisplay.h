@@ -158,6 +158,8 @@ protected:
     void markSimplifiedExpressionBlock(int blockNumber);
     void markSimplifiedExpressionBlocks();
     void ensureHistoryBlockIndexCache() const;
+    void refreshDocument();
+    void applyClassicSeparatorSpacing();
 
 private:
     Q_DISABLE_COPY(ResultDisplay)
