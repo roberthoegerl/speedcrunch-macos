@@ -924,6 +924,10 @@ void ResultDisplay::updateHoverActionPopupMask()
 
 QColor ResultDisplay::hoverActionBadgeFillColor() const
 {
+    // Classic appearance: the round hover buttons blend into the row by using the
+    // display/editor surface background (the darker plum) as their fill.
+    if (Settings::instance()->classicAppearance)
+        return themeSurfaceBackground();
     const QColor hoverColor = m_hoverHighlightColor.isValid()
         ? m_hoverHighlightColor
         : hoverColorForBackground(themeSurfaceBackground());
@@ -934,6 +938,9 @@ QColor ResultDisplay::hoverActionIconColor(HoveredActionBadge badge) const
 {
     if (badge == m_hoveredActionBadge && m_primaryColor.isValid())
         return m_primaryColor;
+    // Classic: keep the glyph legible against the darker plum badge fill.
+    if (Settings::instance()->classicAppearance)
+        return aaForegroundForBackground(themeSurfaceBackground());
     return m_hoverHighlightColor.isValid()
         ? m_hoverHighlightColor
         : hoverColorForBackground(themeSurfaceBackground());
@@ -962,15 +969,15 @@ void ResultDisplay::applyClassicSeparatorSpacing()
         return;
     // Compact the blank separator paragraphs in classic mode: 56% line height
     // between history entries and 26% for the trailing separator just above the
-    // input editor. Non-classic never enters here, and a later non-classic
-    // rebuild recreates the blocks with default (full) spacing.
+    // input editor (21% now). Non-classic never enters here, and a later
+    // non-classic rebuild recreates the blocks with default (full) spacing.
     const int lastBlockNumber = document()->lastBlock().blockNumber();
     QTextCursor cursor(document());
     for (QTextBlock block = document()->firstBlock(); block.isValid(); block = block.next()) {
         if (!block.text().isEmpty())
             continue;
         QTextBlockFormat fmt = block.blockFormat();
-        const qreal percent = (block.blockNumber() == lastBlockNumber) ? 26.0 : 56.0;
+        const qreal percent = (block.blockNumber() == lastBlockNumber) ? 21.0 : 56.0;
         fmt.setLineHeight(percent, QTextBlockFormat::ProportionalHeight);
         cursor.setPosition(block.position());
         cursor.mergeBlockFormat(fmt);
