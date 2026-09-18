@@ -24,17 +24,26 @@ AboutBox::AboutBox(QWidget* parent, Qt::WindowFlags f)
 #ifdef SPEEDCRUNCH_PORTABLE
     msg += " (Portable Edition)";
 #endif
-    msg += "</b><br>(Qt " + QLatin1String(QT_VERSION_STR) + ")<br>";
+    msg += "</b><br>(Qt " + QLatin1String(QT_VERSION_STR) + ")";
 
-#ifdef SPEEDCRUNCH_BUILD_ID
-    msg += "<small>" + tr("Build %1").arg(QLatin1String(SPEEDCRUNCH_BUILD_ID)) + "</small><br>";
-#endif
-#if defined(__APPLE__)
-    msg += "<small>" + tr("Unofficial macOS build for Apple Silicon / arm64,") + "<br/>"
-         + tr("adding an optional Classic Appearance mode") + "<br/>"
-         + "[forked from commit: b598d91d, 2026-08-28]<br/>"
-         + "(Github: @roberthoegerl)"
-         + "</small><br>";
+#if defined(SPEEDCRUNCH_BUILD_ID) || defined(__APPLE__)
+    // Build id + (on macOS) the unofficial-build note, as ONE tight <p> block:
+    // all lines separated by <br> so there is no extra vertical spacing between
+    // them, and a single normal paragraph gap above the whole group.
+    msg += "<p><span style=\"font-size:small\">";
+#  ifdef SPEEDCRUNCH_BUILD_ID
+    msg += tr("Build %1").arg(QLatin1String(SPEEDCRUNCH_BUILD_ID));
+#    if defined(__APPLE__)
+    msg += "<br>";
+#    endif
+#  endif
+#  if defined(__APPLE__)
+    msg += tr("Unofficial macOS build for Apple Silicon / arm64,") + "<br>"
+         + tr("adding an optional Classic Appearance mode") + "<br>"
+         + "[forked from commit: b598d91d, 2026-08-28]<br>"
+         + "(Github: @roberthoegerl)";
+#  endif
+    msg += "</span></p>";
 #endif
 
     const QString authors = "<p><b>%1</b><br>%2";
