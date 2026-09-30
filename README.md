@@ -30,12 +30,12 @@ As I don't have an Apple Developer account, this release is not notarized by App
 
 ## Build
 
-Version 1.0 (`1.0-604-g3aa5f060`), Qt 6.11.2, requires macOS 13 or newer.
+Version 1.0 (`1.0-605-gd4bb2a93`), Qt 6.11.2, requires macOS 13 or newer.
 
 Based on upstream `master` commit
 [`b598d91d`](https://bitbucket.org/heldercorreia/speedcrunch/commits/b598d91db29333eb3536ff0fe86c2abcfe5c6ad8).
 
-Compiled and published September 2026.
+Compiled and published October 2026.
 
 ## License
 
