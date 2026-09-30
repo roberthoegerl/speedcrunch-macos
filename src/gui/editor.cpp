@@ -1529,17 +1529,27 @@ void Editor::setAutoCalcEnabled(bool enable)
 
 void Editor::setCustomCursorVisible(bool visible)
 {
-    setCursorWidth(visible ? kEditorCursorWidth : 0);
+    if (m_customCursorVisible != visible) {
+        m_customCursorVisible = visible;
+        if (visible)
+            showThemedCursorAndRestartBlink();
+        else
+            hideThemedCursorAndStopBlink();
+        viewport()->update();
+    }
+    applyNativeCursorWidth();
+}
 
-    if (m_customCursorVisible == visible)
-        return;
-
-    m_customCursorVisible = visible;
-    if (visible)
-        showThemedCursorAndRestartBlink();
-    else
-        hideThemedCursorAndStopBlink();
-    viewport()->update();
+void Editor::applyNativeCursorWidth()
+{
+    // Keep Qt's native caret at width 0 whenever we draw the themed overlay instead,
+    // so the two never both paint and paintEvent never has to toggle the width. Only
+    // when the native caret is the one actually shown (no themed overlay) does it get
+    // a real width. Called on state changes, never from paintEvent.
+    const int desired =
+        (m_customCursorVisible && !shouldPaintThemedCursor()) ? kEditorCursorWidth : 0;
+    if (cursorWidth() != desired)
+        setCursorWidth(desired);
 }
 
 void Editor::showThemedCursorAndRestartBlink()
@@ -1570,10 +1580,15 @@ bool Editor::shouldPaintThemedCursor() const
 QRect Editor::themedCursorRect() const
 {
     const QRect nativeRect = cursorRect();
-    if (!nativeRect.isValid() || nativeRect.height() <= 0)
+    // The native caret is width 0 while the themed overlay is active, so cursorRect()
+    // reports a zero-width (hence QRect::isValid()==false) rectangle even though its
+    // position and height are correct. Guard on height alone, not isValid().
+    if (nativeRect.height() <= 0)
         return QRect();
 
-    return QRect(nativeRect.x() + (nativeRect.width() - kEditorCursorWidth) / 2,
+    // Place the overlay at the caret's left edge (matches the old centering, which
+    // resolved to an offset of 0 back when the native width equalled kEditorCursorWidth).
+    return QRect(nativeRect.x(),
                  nativeRect.y(),
                  kEditorCursorWidth,
                  nativeRect.height());
@@ -2386,14 +2401,12 @@ void Editor::paintEvent(QPaintEvent* event)
 {
     const bool paintThemedCursor = shouldPaintThemedCursor();
     const QRect themedCursor = paintThemedCursor ? themedCursorRect() : QRect();
-    const int savedCursorWidth = cursorWidth();
-    if (paintThemedCursor)
-        setCursorWidth(0);
 
+    // The native caret is kept at width 0 whenever the themed overlay is active
+    // (see applyNativeCursorWidth), so the base paint never draws it. Do NOT toggle
+    // the cursor width here: setCursorWidth() schedules a caret repaint, which would
+    // re-enter paintEvent on every frame and spin a CPU core indefinitely.
     QPlainTextEdit::paintEvent(event);
-
-    if (paintThemedCursor)
-        setCursorWidth(savedCursorWidth);
 
     if (!paintThemedCursor || !m_themedCursorVisible || !themedCursor.isValid())
         return;
@@ -4042,6 +4055,9 @@ void Editor::setThemePrimaryColor(const QColor& color, bool usePrimaryOutline)
     m_themePrimaryColor = color;
     m_usePrimaryOutline = usePrimaryOutline;
     rehighlight();
+    // Theme validity flips whether the themed overlay is used, so re-apply the
+    // native caret width (hidden when themed, real when not).
+    applyNativeCursorWidth();
     if (shouldPaintThemedCursor())
         showThemedCursorAndRestartBlink();
     else

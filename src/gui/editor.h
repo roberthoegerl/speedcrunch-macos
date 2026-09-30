@@ -197,6 +197,7 @@ private:
     QTextCharFormat matchedParenthesisFormat() const;
     bool shouldPaintThemedCursor() const;
     QRect themedCursorRect() const;
+    void applyNativeCursorWidth();
 };
 
 class EditorCompletion : public QObject {
