@@ -163,6 +163,9 @@ private slots:
     void adding_second_wrapped_character_keeps_first_line_visible();
     void editor_fill_color_is_15_percent_lighter_for_dark_background_role();
     void editor_fill_color_is_15_percent_darker_for_light_background_role();
+    void theme_primary_color_change_updates_chrome_without_touching_document();
+    void format_only_change_does_not_emit_input_text_changed();
+    void real_edit_emits_input_text_changed_once();
 };
 
 static QTreeWidget* s_completionPopupTree()
@@ -4305,6 +4308,82 @@ void TestEditorUi::editor_fill_color_is_15_percent_darker_for_light_background_r
 
     settings->colorScheme = oldColorScheme;
     settings->customColorSchemeJson = oldCustomColorSchemeJson;
+}
+
+// Pane activation calls setThemePrimaryColor() on every key press and on every
+// selection change in the result display. It must only restyle the editor: any
+// document change would emit textChanged(), and MainWindow clears the result
+// display's selection on input changes (regression: mouse selection in the
+// result display was wiped on every mouse move).
+void TestEditorUi::theme_primary_color_change_updates_chrome_without_touching_document()
+{
+    Settings* settings = Settings::instance();
+    const bool oldClassicAppearance = settings->classicAppearance;
+    settings->classicAppearance = false; // the primary outline is only drawn in modern mode
+
+    Editor editor;
+    editor.setText(QStringLiteral("sin(1)+2"));
+    QCoreApplication::processEvents();
+    const QString textBefore = editor.text();
+
+    QSignalSpy textChangedSpy(&editor, &Editor::textChanged);
+    QSignalSpy inputTextChangedSpy(&editor, &Editor::inputTextChanged);
+    const QColor primary(QStringLiteral("#3080ff"));
+    const QString outline = QStringLiteral("solid %1").arg(primary.name());
+
+    editor.setThemePrimaryColor(primary, true);
+    QVERIFY2(editor.styleSheet().contains(outline), qPrintable(editor.styleSheet()));
+    editor.setThemePrimaryColor(primary, true); // unchanged: must be a no-op
+    QVERIFY(editor.styleSheet().contains(outline));
+    editor.setThemePrimaryColor(primary, false);
+    QVERIFY2(!editor.styleSheet().contains(outline), qPrintable(editor.styleSheet()));
+    QVERIFY(editor.styleSheet().contains(QStringLiteral("color: %1;").arg(primary.name())));
+    QCoreApplication::processEvents();
+
+    QCOMPARE(textChangedSpy.count(), 0);
+    QCOMPARE(inputTextChangedSpy.count(), 0);
+    QCOMPARE(editor.text(), textBefore);
+
+    settings->classicAppearance = oldClassicAppearance;
+}
+
+// Qt emits textChanged() for format-only changes too (e.g. a syntax re-highlight).
+// inputTextChanged() is the "user edited the input" signal and must stay silent.
+void TestEditorUi::format_only_change_does_not_emit_input_text_changed()
+{
+    Editor editor;
+    editor.setText(QStringLiteral("sin(1)+2"));
+    QCoreApplication::processEvents();
+
+    QSignalSpy textChangedSpy(&editor, &Editor::textChanged);
+    QSignalSpy inputTextChangedSpy(&editor, &Editor::inputTextChanged);
+
+    QTextCursor cursor(editor.document());
+    cursor.setPosition(0);
+    cursor.setPosition(3, QTextCursor::KeepAnchor);
+    QTextCharFormat bold;
+    bold.setFontWeight(QFont::Bold);
+    cursor.mergeCharFormat(bold);
+    editor.rehighlight();
+    QCoreApplication::processEvents();
+
+    QVERIFY2(textChangedSpy.count() > 0, "a format-only change is expected to emit textChanged()");
+    QCOMPARE(inputTextChangedSpy.count(), 0);
+}
+
+void TestEditorUi::real_edit_emits_input_text_changed_once()
+{
+    Editor editor;
+    editor.setText(QStringLiteral("1+2"));
+    QCoreApplication::processEvents();
+    editor.setCursorPosition(editor.text().size());
+
+    QSignalSpy inputTextChangedSpy(&editor, &Editor::inputTextChanged);
+    QTest::keyClick(&editor, Qt::Key_7);
+    QCoreApplication::processEvents();
+
+    QCOMPARE(inputTextChangedSpy.count(), 1);
+    QVERIFY2(editor.text().endsWith(QLatin1Char('7')), qPrintable(editor.text()));
 }
 
 QTEST_MAIN(TestEditorUi)

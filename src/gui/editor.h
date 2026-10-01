@@ -100,6 +100,11 @@ signals:
     void shiftPageUpPressed();
     void bulkEvaluationStarted();
     void bulkEvaluationFinished();
+    // Emitted only when the input's plain text actually changed. Unlike
+    // textChanged(), it is not emitted for format-only document changes such as
+    // a syntax re-highlight, so it is the signal to use for "the user edited
+    // the input" reactions.
+    void inputTextChanged();
 
 public slots:
     void autoCalcSelection(const QString& custom = QString());
@@ -188,7 +193,10 @@ private:
     bool m_usePrimaryOutline = false;
     std::unique_ptr<Session> m_ownedSession;
     Session* m_session;
+    QString m_lastInputText;
 
+    void applyThemeChrome();
+    void emitInputTextChangedIfTextChanged();
     void updateHeightForWrappedText();
     void updateHeightAndEnsureCursorVisible();
     void showThemedCursorAndRestartBlink();

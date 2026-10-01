@@ -60,6 +60,9 @@
 #include <QPushButton>
 #include <QScrollBar>
 #include <QScopeGuard>
+#include <QTextCursor>
+#include <QTextDocument>
+#include <QTextDocumentFragment>
 #include <QSignalSpy>
 #include <QSplitter>
 #include <QSplitterHandle>
@@ -644,6 +647,8 @@ private slots:
     void result_display_hover_action_badges_trigger_when_clicked();
     void result_display_scroll_to_bottom_button_uses_custom_tooltip();
     void result_display_context_menu_hides_main_menu_when_menu_bar_visible();
+    void result_display_mouse_selection_survives_pane_activation_and_copies();
+    void result_display_mouse_selection_survives_pane_activation_and_copies_data();
     void bitfield_selected_bit_keeps_primary_fill_while_hovered();
     void bitfield_buttons_use_configured_generated_shades();
     void keypad_buttons_use_custom_themed_tooltips();
@@ -6795,6 +6800,113 @@ void TestDisplayUi::closing_and_reopening_docks_keeps_attached_widgets()
         QVERIFY(bitfield != nullptr);
         QVERIFY(bitfield->isVisible());
     }
+}
+
+// Free mouse selection in the result display, as in 0.12: part of an
+// expression, a result value, and a range spanning expression -> result.
+// Regression: every selection change activates the pane, and activation used to
+// re-highlight the editor; Qt reports that format-only change as textChanged(),
+// MainWindow took it for user input and cleared the display selection -- on
+// every mouse move, so a drag never selected more than one character, and
+// Cmd+C (whose key press activates the pane as well) copied nothing.
+void TestDisplayUi::result_display_mouse_selection_survives_pane_activation_and_copies_data()
+{
+    QTest::addColumn<QString>("from");      // first selected character
+    QTest::addColumn<int>("fromOffset");    // offset into `from`
+    QTest::addColumn<QString>("to");        // text whose end ends the selection
+    QTest::newRow("part of an expression") << QStringLiteral("111") << 1 << QStringLiteral("222");
+    QTest::newRow("a result value") << QStringLiteral("333") << 0 << QStringLiteral("333");
+    QTest::newRow("expression to result") << QStringLiteral("222") << 0 << QStringLiteral("333");
+}
+
+void TestDisplayUi::result_display_mouse_selection_survives_pane_activation_and_copies()
+{
+    QFETCH(QString, from);
+    QFETCH(int, fromOffset);
+    QFETCH(QString, to);
+
+    MainWindowStateGuard guard;
+    Settings* settings = Settings::instance();
+    const bool oldClassicAppearance = settings->classicAppearance;
+    const auto restoreClassicAppearance = qScopeGuard([settings, oldClassicAppearance]() {
+        settings->classicAppearance = oldClassicAppearance;
+    });
+    settings->classicAppearance = false;
+    settings->keypadVisible = false;
+
+    MainWindow window;
+    window.resize(900, 600);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    ResultDisplay* display = window.findChild<ResultDisplay*>();
+    QVERIFY(display != nullptr);
+    Editor* editor = editorForDisplay(display);
+    QVERIFY(editor != nullptr);
+
+    editor->setFocus();
+    editor->setText(QStringLiteral("111+222"));
+    editor->evaluate();
+    editor->setText(QStringLiteral("3*4"));
+    editor->evaluate();
+    QTRY_VERIFY(display->document()->toPlainText().contains(QStringLiteral("333")));
+    QTRY_VERIFY(display->document()->toPlainText().contains(QStringLiteral("12")));
+    QCoreApplication::processEvents();
+
+    QTextDocument* document = display->document();
+    const QTextCursor fromMatch = document->find(from);
+    const QTextCursor toMatch = document->find(to, fromMatch.selectionStart());
+    QVERIFY2(!fromMatch.isNull() && !toMatch.isNull(), qPrintable(document->toPlainText()));
+    const int anchor = fromMatch.selectionStart() + fromOffset;
+    const int position = toMatch.selectionEnd();
+
+    // Aim just inside the first and last selected glyphs, so the hit test maps
+    // exactly to the selection boundaries.
+    const auto pointAt = [display](int pos, int dx) {
+        QTextCursor c(display->document());
+        c.setPosition(pos);
+        const QRect r = display->cursorRect(c);
+        return QPoint(r.x() + dx, r.center().y());
+    };
+    const QPoint start = pointAt(anchor, 2);
+    const QPoint end = pointAt(position, -2);
+
+    QWidget* viewport = display->viewport();
+    const auto send = [viewport](QEvent::Type type, const QPoint& pos,
+                                 Qt::MouseButton button, Qt::MouseButtons buttons) {
+        QMouseEvent event(type, pos, viewport->mapToGlobal(pos), button, buttons, Qt::NoModifier);
+        QApplication::sendEvent(viewport, &event);
+        QCoreApplication::processEvents();
+    };
+    send(QEvent::MouseButtonPress, start, Qt::LeftButton, Qt::LeftButton);
+    const int steps = 12;
+    for (int i = 1; i <= steps; ++i) {
+        const QPoint p = start + (end - start) * i / steps;
+        send(QEvent::MouseMove, p, Qt::NoButton, Qt::LeftButton);
+    }
+    send(QEvent::MouseButtonRelease, end, Qt::LeftButton, Qt::NoButton);
+    QTest::qWait(50); // let deferred pane-activation/focus work run
+
+    QTextCursor expected(document);
+    expected.setPosition(anchor);
+    expected.setPosition(position, QTextCursor::KeepAnchor);
+    QVERIFY(expected.selectedText().size() > 1);
+    QCOMPARE(display->textCursor().selectedText(), expected.selectedText());
+
+    // Cmd+C is typed into the focused input editor; its key press activates the
+    // pane again before the copy runs. The display selection must survive that
+    // and be what gets copied.
+    QApplication::clipboard()->clear();
+    QTest::keySequence(editor, QKeySequence::Copy);
+    QCoreApplication::processEvents();
+    QCOMPARE(QApplication::clipboard()->text(),
+             QTextDocumentFragment(expected).toPlainText());
+    QCOMPARE(display->textCursor().selectedText(), expected.selectedText());
+
+    // Typing into the input is a real edit and still drops the stale display
+    // selection, so a later Copy targets what the user is working on.
+    QTest::keyClick(editor, Qt::Key_5);
+    QTRY_VERIFY(!display->textCursor().hasSelection());
 }
 
 int main(int argc, char** argv)

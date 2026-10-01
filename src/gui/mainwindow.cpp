@@ -4997,7 +4997,7 @@ void MainWindow::configureEditorDisplayPane(ResultDisplay* display, Editor* edit
     editor->installEventFilter(this);
     editor->viewport()->installEventFilter(this);
 
-    connect(editor, &Editor::textChanged, this, [this, display, editor]() {
+    connect(editor, &Editor::inputTextChanged, this, [this, display, editor]() {
         // Programmatic text changes in an inactive pane must not make that pane
         // active. Real editor input activates the pane through the mouse/key/input
         // event path before the text changes.
@@ -5035,7 +5035,10 @@ void MainWindow::configureEditorDisplayPane(ResultDisplay* display, Editor* edit
     connect(editor, &Editor::shiftPageDownPressed, display, &ResultDisplay::scrollLineDown);
     connect(editor, &Editor::pageUpPressed, display, &ResultDisplay::scrollPageUp);
     connect(editor, &Editor::pageDownPressed, display, &ResultDisplay::scrollPageDown);
-    connect(editor, &Editor::textChanged, this, [this, editor]() {
+    // inputTextChanged, not textChanged: handleEditorTextChange() clears the
+    // result display's selection, which must happen only on real input edits,
+    // never on format-only changes such as a re-highlight.
+    connect(editor, &Editor::inputTextChanged, this, [this, editor]() {
         if (editor == m_widgets.editor
             || editor->hasFocus()
             || editor->viewport()->hasFocus()) {
@@ -6107,7 +6110,6 @@ void MainWindow::updatePaneEditorCursorVisibility()
                 continue;
             editor->setCustomCursorVisible(false);
             editor->setThemePrimaryColor(surfaces.primary.background, false);
-            editor->rehighlight();
         }
         window->updateActiveSessionPaneTabColor();
     }
@@ -7049,7 +7051,7 @@ void MainWindow::createFixedConnections()
 {
     ResultDisplay* initialDisplay = m_widgets.display;
     Editor* initialEditor = m_widgets.editor;
-    connect(initialEditor, &Editor::textChanged, this, [this, initialDisplay, initialEditor]() {
+    connect(initialEditor, &Editor::inputTextChanged, this, [this, initialDisplay, initialEditor]() {
         if (initialEditor == m_widgets.editor
             || initialEditor->hasFocus()
             || initialEditor->viewport()->hasFocus()) {
@@ -7294,7 +7296,7 @@ void MainWindow::createFixedConnections()
     connect(m_widgets.editor, SIGNAL(shiftPageDownPressed()), m_widgets.display, SLOT(scrollLineDown()));
     connect(m_widgets.editor, SIGNAL(pageUpPressed()), m_widgets.display, SLOT(scrollPageUp()));
     connect(m_widgets.editor, SIGNAL(pageDownPressed()), m_widgets.display, SLOT(scrollPageDown()));
-    connect(initialEditor, &Editor::textChanged, this, [this, initialEditor]() {
+    connect(initialEditor, &Editor::inputTextChanged, this, [this, initialEditor]() {
         if (initialEditor == m_widgets.editor
             || initialEditor->hasFocus()
             || initialEditor->viewport()->hasFocus()) {

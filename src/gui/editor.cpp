@@ -1325,11 +1325,15 @@ Editor::Editor(QWidget* parent)
     connect(m_completionTimer, SIGNAL(timeout()), SLOT(triggerAutoComplete()));
     connect(m_matchingTimer, SIGNAL(timeout()), SLOT(doMatchingPar()));
     connect(this, &Editor::selectionChanged, this, &Editor::checkSelectionAutoCalc);
-    connect(this, &Editor::textChanged, this, [this]() { m_currentAutoCalcDismissed = false; });
-    connect(this, &Editor::textChanged, this, &Editor::checkAutoCalc);
-    connect(this, &Editor::textChanged, this, &Editor::checkAutoComplete);
-    connect(this, &Editor::textChanged, this, &Editor::checkMatching);
-    connect(this, &Editor::textChanged, this, &Editor::showThemedCursorAndRestartBlink);
+    // textChanged() also fires for format-only changes (e.g. a syntax re-highlight
+    // on a theme or pane-activation change). The reactions below mean "the user
+    // edited the input", so they listen to inputTextChanged() instead.
+    connect(this, &Editor::textChanged, this, &Editor::emitInputTextChangedIfTextChanged);
+    connect(this, &Editor::inputTextChanged, this, [this]() { m_currentAutoCalcDismissed = false; });
+    connect(this, &Editor::inputTextChanged, this, &Editor::checkAutoCalc);
+    connect(this, &Editor::inputTextChanged, this, &Editor::checkAutoComplete);
+    connect(this, &Editor::inputTextChanged, this, &Editor::checkMatching);
+    connect(this, &Editor::inputTextChanged, this, &Editor::showThemedCursorAndRestartBlink);
     connect(this, &Editor::cursorPositionChanged, this, &Editor::updateHeightAndEnsureCursorVisible);
     connect(this, &Editor::cursorPositionChanged, this, &Editor::showThemedCursorAndRestartBlink);
     connect(document()->documentLayout(), &QAbstractTextDocumentLayout::documentSizeChanged,
@@ -3921,6 +3925,17 @@ void Editor::rehighlight()
     else
         m_highlighter->update();
     updateMatchedParenthesisColors();
+    applyThemeChrome();
+    m_highlighter->rehighlight();
+}
+
+// Applies the editor "chrome": palette, stylesheet (fill, text colour, primary
+// outline, radius, margins, padding) and document margin. None of this affects
+// the syntax-highlighting formats, which depend only on the colour scheme, so it
+// never needs a highlighter pass. The document margin is a constant, so once it
+// is set this leaves the document untouched (no textChanged()).
+void Editor::applyThemeChrome()
+{
     const QColor themeBackground = m_highlighter->colorForRole(ColorScheme::Background);
     const QColor generatedPrimary = generatePrimaryFromBackground(themeBackground);
     // Editors can rehighlight before MainWindow injects the resolved theme
@@ -4001,7 +4016,6 @@ void Editor::rehighlight()
     viewport()->setStyleSheet(QStringLiteral("background: transparent;"));
     viewport()->setPalette(viewportPalette);
     clearMask();
-    m_highlighter->rehighlight();
 }
 
 void Editor::reflowForAppearanceChange()
@@ -4022,6 +4036,15 @@ void Editor::reflowForAppearanceChange()
     // The single-line height depends on the appearance mode (see
     // editorVerticalDecorationHeight), so recompute it now.
     updateHeightForWrappedText();
+}
+
+void Editor::emitInputTextChangedIfTextChanged()
+{
+    const QString current = toPlainText();
+    if (current == m_lastInputText)
+        return;
+    m_lastInputText = current;
+    emit inputTextChanged();
 }
 
 void Editor::setThemeSurfaceColor(const QColor& color, const QColor& outerColor)
@@ -4052,9 +4075,18 @@ QTextCharFormat Editor::matchedParenthesisFormat() const
 
 void Editor::setThemePrimaryColor(const QColor& color, bool usePrimaryOutline)
 {
+    // Called on every pane activation (each key press, and each selection change
+    // in the result display), so it must be cheap and side-effect free when
+    // nothing changes.
+    if (color == m_themePrimaryColor && usePrimaryOutline == m_usePrimaryOutline)
+        return;
     m_themePrimaryColor = color;
     m_usePrimaryOutline = usePrimaryOutline;
-    rehighlight();
+    // The primary colour and the outline only affect the chrome. Do NOT call
+    // rehighlight() here: a highlighter pass is a format-only document change,
+    // which Qt reports as textChanged(), and that used to clear the result
+    // display's selection on every mouse move of a drag.
+    applyThemeChrome();
     // Theme validity flips whether the themed overlay is used, so re-apply the
     // native caret width (hidden when themed, real when not).
     applyNativeCursorWidth();
