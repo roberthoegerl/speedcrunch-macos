@@ -60,6 +60,7 @@
 #include <QPushButton>
 #include <QScrollBar>
 #include <QScopeGuard>
+#include <QTextBlock>
 #include <QTextCursor>
 #include <QTextDocument>
 #include <QTextDocumentFragment>
@@ -271,6 +272,11 @@ public:
     QRect removeBadgeRect(int historyIndex) const
     {
         return removeGlyphBadgeRectForHistoryIndex(historyIndex);
+    }
+
+    QRect cancelBadgeRect() const
+    {
+        return cancelGlyphBadgeRectForEditingIndex();
     }
 };
 
@@ -649,6 +655,7 @@ private slots:
     void result_display_context_menu_hides_main_menu_when_menu_bar_visible();
     void result_display_mouse_selection_survives_pane_activation_and_copies();
     void result_display_mouse_selection_survives_pane_activation_and_copies_data();
+    void result_display_ibeam_only_over_text();
     void bitfield_selected_bit_keeps_primary_fill_while_hovered();
     void bitfield_buttons_use_configured_generated_shades();
     void keypad_buttons_use_custom_themed_tooltips();
@@ -1030,7 +1037,7 @@ void TestDisplayUi::result_display_hover_action_badges_use_hover_and_primary_col
     QVERIFY(editRect.isValid());
 
     QTest::mouseMove(display.viewport(), QPoint(18, copyRect.center().y()));
-    QTRY_VERIFY(display.viewport()->cursor().shape() != Qt::PointingHandCursor);
+    QTRY_COMPARE(display.viewport()->cursor().shape(), Qt::IBeamCursor);
     QCOMPARE(display.viewport()->toolTip(), QString());
     QImage rowHoverImage = display.viewport()->grab().toImage();
     QVERIFY2(colorsAreClose(rowHoverImage.pixelColor(copyRect.center()), expectedBadgeFill, 3),
@@ -1044,7 +1051,7 @@ void TestDisplayUi::result_display_hover_action_badges_use_hover_and_primary_col
                             .arg(hoverColor.name())));
 
     QTest::mouseMove(display.viewport(), copyRect.center());
-    QTRY_COMPARE(display.viewport()->cursor().shape(), Qt::PointingHandCursor);
+    QTRY_COMPARE(display.viewport()->cursor().shape(), Qt::ArrowCursor);
     QCOMPARE(display.viewport()->toolTip(), QString());
     QFrame* actionPopup = display.findChild<QFrame*>(QStringLiteral("resultActionPopup"));
     QTRY_VERIFY(actionPopup != nullptr && actionPopup->isVisible());
@@ -1072,7 +1079,7 @@ void TestDisplayUi::result_display_hover_action_badges_use_hover_and_primary_col
                             .arg(hoverColor.name())));
 
     QTest::mouseMove(display.viewport(), QPoint(18, copyRect.center().y()));
-    QTRY_VERIFY(display.viewport()->cursor().shape() != Qt::PointingHandCursor);
+    QTRY_COMPARE(display.viewport()->cursor().shape(), Qt::IBeamCursor);
     QCOMPARE(display.viewport()->toolTip(), QString());
     QTRY_VERIFY(actionPopup == nullptr || !actionPopup->isVisible());
 }
@@ -1955,7 +1962,7 @@ void TestDisplayUi::main_window_uses_generated_theme_surface_for_chrome_and_edit
         }
         QCOMPARE(pipeSeparators, 2);
         for (QPushButton* button : statusBar->findChildren<QPushButton*>()) {
-            QCOMPARE(button->cursor().shape(), Qt::PointingHandCursor);
+            QCOMPARE(button->cursor().shape(), Qt::ArrowCursor);
             const QImage buttonImage = button->grab().toImage();
             QVERIFY(!buttonImage.isNull());
             QVERIFY2(firstPixelMatchingColor(buttonImage,
@@ -2338,7 +2345,7 @@ void TestDisplayUi::main_window_uses_generated_theme_surface_for_chrome_and_edit
     }
     QCOMPARE(recreatedPipeSeparators, 2);
     for (QPushButton* button : recreatedStatusBar->findChildren<QPushButton*>())
-        QCOMPARE(button->cursor().shape(), Qt::PointingHandCursor);
+        QCOMPARE(button->cursor().shape(), Qt::ArrowCursor);
 
     const QImage changedDisplayImage = changedDisplay->viewport()->grab().toImage();
     QVERIFY(!changedDisplayImage.isNull());
@@ -2939,7 +2946,7 @@ void TestDisplayUi::dock_surfaces_use_successive_generated_shades()
         foundFloatButton |= name == QStringLiteral("qt_dockwidget_floatbutton");
         QCOMPARE(button->palette().color(QPalette::Button).name(), headerButtonFill.name());
         QCOMPARE(button->palette().color(QPalette::ButtonText).name(), headerButtonText.name());
-        QCOMPARE(button->cursor().shape(), Qt::PointingHandCursor);
+        QCOMPARE(button->cursor().shape(), Qt::ArrowCursor);
         QVERIFY(button->hasMouseTracking());
         QCOMPARE(button->minimumSize(), QSize(18, 18));
         QCOMPARE(button->maximumSize(), QSize(18, 18));
@@ -3363,7 +3370,7 @@ void TestDisplayUi::dock_surfaces_use_successive_generated_shades()
                                   Qt::NoButton,
                                   Qt::NoModifier);
             QCoreApplication::sendEvent(tabBar, &moveEvent);
-            QTRY_COMPARE(tabBar->cursor().shape(), Qt::PointingHandCursor);
+            QCOMPARE(tabBar->cursor().shape(), Qt::ArrowCursor);
             QWidget* tabBarParent = tabBar->parentWidget();
             QVERIFY(tabBarParent != nullptr);
             QCOMPARE(tabBarParent->palette().color(QPalette::Window).name(), chromeFill.name());
@@ -3950,7 +3957,10 @@ void TestDisplayUi::dock_search_focus_suppresses_editor_primary_outline_across_p
     const QColor selectedTabFill = shades.at(UiConfig::SelectedSessionTabFillShade);
     QList<QTabBar*> tabBars = window.findChildren<QTabBar*>();
     tabBars.erase(std::remove_if(tabBars.begin(), tabBars.end(), [](QTabBar* tabBar) {
-        return tabBar->count() == 0 || !tabBar->isVisible();
+        // Only the per-pane session tab bars; the dock area's own tab bar (here
+        // for the visible Constants dock) is not one of them.
+        return tabBar->count() == 0 || !tabBar->isVisible()
+            || tabBar->property("speedcrunchDockSystemTabBar").toBool();
     }), tabBars.end());
     QCOMPARE(tabBars.size(), 2);
     for (QTabBar* tabBar : tabBars) {
@@ -6886,11 +6896,15 @@ void TestDisplayUi::result_display_mouse_selection_survives_pane_activation_and_
         QApplication::sendEvent(viewport, &event);
         QCoreApplication::processEvents();
     };
+    // Selectable text shows the I-beam, before and throughout the drag.
+    send(QEvent::MouseMove, start, Qt::NoButton, Qt::NoButton);
+    QCOMPARE(viewport->cursor().shape(), Qt::IBeamCursor);
     send(QEvent::MouseButtonPress, start, Qt::LeftButton, Qt::LeftButton);
     const int steps = 12;
     for (int i = 1; i <= steps; ++i) {
         const QPoint p = start + (end - start) * i / steps;
         send(QEvent::MouseMove, p, Qt::NoButton, Qt::LeftButton);
+        QCOMPARE(viewport->cursor().shape(), Qt::IBeamCursor);
     }
     send(QEvent::MouseButtonRelease, end, Qt::LeftButton, Qt::NoButton);
     QTest::qWait(50); // let deferred pane-activation/focus work run
@@ -6915,6 +6929,100 @@ void TestDisplayUi::result_display_mouse_selection_survives_pane_activation_and_
     // selection, so a later Copy targets what the user is working on.
     QTest::keyClick(editor, Qt::Key_5);
     QTRY_VERIFY(!display->textCursor().hasSelection());
+}
+
+void TestDisplayUi::result_display_ibeam_only_over_text()
+{
+    BadgeTestResultDisplay display;
+    Session session;
+    session.addHistoryEntry(HistoryEntry(QStringLiteral("120 / 8"), Quantity(15)));
+    session.addHistoryEntry(HistoryEntry(QStringLiteral("2 + 3"), Quantity(5)));
+    display.setSession(&session);
+    display.resize(520, 300);
+    display.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&display));
+
+    QWidget* viewport = display.viewport();
+    QTextDocument* document = display.document();
+    const auto caretRect = [&display](const QTextCursor& at) { return display.cursorRect(at); };
+    const auto cursorAt = [document](int pos) {
+        QTextCursor c(document);
+        c.setPosition(pos);
+        return c;
+    };
+    const auto moveTo = [viewport](const QPoint& pos, Qt::MouseButtons buttons = Qt::NoButton) {
+        QMouseEvent event(QEvent::MouseMove, pos, viewport->mapToGlobal(pos),
+                          Qt::NoButton, buttons, Qt::NoModifier);
+        QApplication::sendEvent(viewport, &event);
+    };
+
+    const QTextCursor expression = document->find(QStringLiteral("120 / 8"));
+    QVERIFY(!expression.isNull());
+    const QRect lineStart = caretRect(cursorAt(expression.selectionStart()));
+    const QRect lineEnd = caretRect(cursorAt(expression.selectionEnd()));
+    const QPoint onText((lineStart.x() + lineEnd.x()) / 2, lineStart.center().y());
+    const QPoint rightOfText(lineEnd.x() + 40, lineStart.center().y());
+    for (const QRect& badge : {display.copyBadgeRect(0), display.editBadgeRect(0),
+                               display.settingsBadgeRect(0), display.removeBadgeRect(0)})
+        QVERIFY(!badge.contains(rightOfText));
+
+    // The separator line between the two entries holds no text.
+    QTextBlock separator;
+    for (QTextBlock b = expression.block(); b.isValid(); b = b.next()) {
+        if (b.text().isEmpty()) {
+            separator = b;
+            break;
+        }
+    }
+    QVERIFY(separator.isValid());
+    const QRect separatorRect = caretRect(cursorAt(separator.position()));
+    const QPoint betweenEntries(onText.x(), separatorRect.center().y());
+
+    // Browser convention: the I-beam only over the glyphs, the arrow over blank
+    // space and over the hover buttons.
+    moveTo(onText);
+    QCOMPARE(viewport->cursor().shape(), Qt::IBeamCursor);
+    moveTo(rightOfText);
+    QCOMPARE(viewport->cursor().shape(), Qt::ArrowCursor);
+    moveTo(betweenEntries);
+    QCOMPARE(viewport->cursor().shape(), Qt::ArrowCursor);
+    moveTo(onText);
+    QCOMPARE(viewport->cursor().shape(), Qt::IBeamCursor);
+    moveTo(display.copyBadgeRect(0).center());
+    QCOMPARE(viewport->cursor().shape(), Qt::ArrowCursor);
+
+    // A selection drag keeps the I-beam even over blank space, until release.
+    const auto send = [viewport](QEvent::Type type, const QPoint& pos,
+                                 Qt::MouseButton button, Qt::MouseButtons buttons) {
+        QMouseEvent event(type, pos, viewport->mapToGlobal(pos), button, buttons, Qt::NoModifier);
+        QApplication::sendEvent(viewport, &event);
+    };
+    moveTo(onText);
+    send(QEvent::MouseButtonPress, onText, Qt::LeftButton, Qt::LeftButton);
+    moveTo(rightOfText, Qt::LeftButton);
+    QCOMPARE(viewport->cursor().shape(), Qt::IBeamCursor);
+    moveTo(betweenEntries, Qt::LeftButton);
+    QCOMPARE(viewport->cursor().shape(), Qt::IBeamCursor);
+    send(QEvent::MouseButtonRelease, betweenEntries, Qt::LeftButton, Qt::NoButton);
+    QCOMPARE(viewport->cursor().shape(), Qt::ArrowCursor);
+    QVERIFY(display.textCursor().hasSelection());
+
+    // In-place edit mode: its cancel button keeps the arrow too.
+    display.setEditingHistoryIndex(0);
+    const QRect cancelRect = display.cancelBadgeRect();
+    QVERIFY(cancelRect.isValid());
+    moveTo(cancelRect.center());
+    QCOMPARE(viewport->cursor().shape(), Qt::ArrowCursor);
+    moveTo(onText);
+    QCOMPARE(viewport->cursor().shape(), Qt::IBeamCursor);
+    moveTo(rightOfText);
+    QCOMPARE(viewport->cursor().shape(), Qt::ArrowCursor);
+    display.setEditingHistoryIndex(-1);
+
+    QEvent leave(QEvent::Leave);
+    moveTo(onText);
+    QApplication::sendEvent(&display, &leave);
+    QCOMPARE(viewport->cursor().shape(), Qt::ArrowCursor);
 }
 
 int main(int argc, char** argv)

@@ -28,6 +28,7 @@
 #include <QApplication>
 #include <QClipboard>
 #include <QContextMenuEvent>
+#include <QCursor>
 #include <QFrame>
 #include <QHoverEvent>
 #include <QIcon>
@@ -41,6 +42,8 @@
 #include <QPolygonF>
 #include <QLinearGradient>
 #include <QScrollBar>
+#include <QTextBlock>
+#include <QTextLayout>
 #include <QToolButton>
 
 #include <limits>
@@ -461,6 +464,7 @@ ResultDisplay::ResultDisplay(QWidget* parent)
     setLayoutDirection(Qt::LeftToRight);
     setMinimumWidth(150);
     setReadOnly(true);
+    viewport()->setCursor(Qt::ArrowCursor);
     setFocusPolicy(Qt::NoFocus);
     setWordWrapMode(QTextOption::WrapAnywhere);
     setMouseTracking(true);
@@ -481,7 +485,7 @@ ResultDisplay::ResultDisplay(QWidget* parent)
 
     m_scrollToBottomButton->setFocusPolicy(Qt::NoFocus);
     m_scrollToBottomButton->setObjectName(QStringLiteral("ScrollToBottomButton"));
-    m_scrollToBottomButton->setCursor(Qt::PointingHandCursor);
+    m_scrollToBottomButton->setCursor(Qt::ArrowCursor);
     m_scrollToBottomButton->setToolTip(QString());
     m_scrollToBottomButton->setIconSize(QSize(16, 16));
     m_scrollToBottomButton->setFixedSize(30, 30);
@@ -570,7 +574,7 @@ void ResultDisplay::setEditingHistoryIndex(int index)
         viewport()->update(hoverActionRectForHistoryIndex(previousHoveredHistoryIndex));
     }
     if (m_editingHistoryIndex >= 0)
-        viewport()->unsetCursor();
+        updateViewportCursorAtMouse();
 
     updateHoverHighlightSelection();
 
@@ -855,6 +859,45 @@ void ResultDisplay::setHoveredActionBadge(HoveredActionBadge badge)
         viewport()->update(previousRect.adjusted(-1, -1, 1, 1));
     if (currentRect.isValid())
         viewport()->update(currentRect.adjusted(-1, -1, 1, 1));
+}
+
+// True when pos is over a line's glyphs (first to last character), not over the
+// blank space beside, between or below the lines.
+bool ResultDisplay::isTextAtPosition(const QPoint& pos) const
+{
+    const QTextBlock block = cursorForPosition(pos).block();
+    const QTextLayout* layout = block.isValid() ? block.layout() : nullptr;
+    if (layout == nullptr)
+        return false;
+
+    // Same origin QPlainTextEdit paints the block's layout at.
+    const QPointF origin = blockBoundingGeometry(block).translated(contentOffset()).topLeft()
+        + layout->position();
+    for (int i = 0; i < layout->lineCount(); ++i) {
+        const QTextLine line = layout->lineAt(i);
+        if (line.textLength() > 0 && line.naturalTextRect().translated(origin).contains(pos))
+            return true;
+    }
+    return false;
+}
+
+// Browser-style cursor for read-only text: the I-beam over the glyphs and for the
+// whole of a selection drag, the arrow over blank space and over the hover
+// buttons (macOS buttons keep the arrow).
+void ResultDisplay::updateViewportCursor(const QPoint& pos, bool overControl)
+{
+    const bool showIBeam = m_mouseSelecting || (!overControl && isTextAtPosition(pos));
+    viewport()->setCursor(showIBeam ? Qt::IBeamCursor : Qt::ArrowCursor);
+}
+
+void ResultDisplay::updateViewportCursorAtMouse()
+{
+    if (!viewport()->underMouse()) {
+        viewport()->setCursor(Qt::ArrowCursor);
+        return;
+    }
+    updateViewportCursor(viewport()->mapFromGlobal(QCursor::pos()),
+                         m_hoveredActionBadge != NoActionBadge);
 }
 
 void ResultDisplay::setHoverActionToolTip(const QString& text)
@@ -1307,6 +1350,7 @@ void ResultDisplay::mousePressEvent(QMouseEvent* event)
             event->accept();
             return;
         }
+        m_mouseSelecting = event->button() == Qt::LeftButton;
         QPlainTextEdit::mousePressEvent(event);
         return;
     }
@@ -1348,7 +1392,17 @@ void ResultDisplay::mousePressEvent(QMouseEvent* event)
         }
     }
 
+    m_mouseSelecting = event->button() == Qt::LeftButton;
     QPlainTextEdit::mousePressEvent(event);
+}
+
+void ResultDisplay::mouseReleaseEvent(QMouseEvent* event)
+{
+    QPlainTextEdit::mouseReleaseEvent(event);
+    if (event->button() == Qt::LeftButton && m_mouseSelecting) {
+        m_mouseSelecting = false;
+        updateViewportCursor(event->pos(), m_hoveredActionBadge != NoActionBadge);
+    }
 }
 
 QMenu* ResultDisplay::createContextMenu(const QPoint& pos)
@@ -1516,7 +1570,7 @@ void ResultDisplay::contextMenuEvent(QContextMenuEvent* event)
 void ResultDisplay::leaveEvent(QEvent* event)
 {
     QPlainTextEdit::leaveEvent(event);
-    viewport()->unsetCursor();
+    viewport()->setCursor(Qt::ArrowCursor);
     setHoveredActionBadge(NoActionBadge);
     setHoverActionToolTip(QString());
     if (m_hoveredHistoryIndex >= 0) {
@@ -1596,8 +1650,8 @@ void ResultDisplay::mouseMoveEvent(QMouseEvent* event)
 
     if (event->buttons() & Qt::LeftButton) {
         setHoverActionToolTip(QString());
-        viewport()->unsetCursor();
         setHoveredActionBadge(NoActionBadge);
+        updateViewportCursor(event->pos());
         return;
     }
 
@@ -1606,10 +1660,7 @@ void ResultDisplay::mouseMoveEvent(QMouseEvent* event)
         const bool overCancelGlyph = cancelRect.isValid() && cancelRect.contains(event->pos());
         setHoveredActionBadge(overCancelGlyph ? CancelActionBadge : NoActionBadge);
         setHoverActionToolTip(overCancelGlyph ? tr("Cancel editing") : QString());
-        if (overCancelGlyph)
-            viewport()->setCursor(Qt::PointingHandCursor);
-        else
-            viewport()->unsetCursor();
+        updateViewportCursor(event->pos(), overCancelGlyph);
         return;
     }
 
@@ -1622,7 +1673,7 @@ void ResultDisplay::mouseMoveEvent(QMouseEvent* event)
             viewport()->update(hoverActionRectForHistoryIndex(previousHoveredHistoryIndex));
         }
         setHoverActionToolTip(QString());
-        viewport()->unsetCursor();
+        updateViewportCursor(event->pos());
         return;
     }
 
@@ -1647,10 +1698,7 @@ void ResultDisplay::mouseMoveEvent(QMouseEvent* event)
     const HoveredActionBadge actionBadge = actionBadgeAtPosition(m_hoveredHistoryIndex, event->pos());
     const bool overActionGlyph = actionBadge != NoActionBadge;
     setHoveredActionBadge(actionBadge);
-    if (overActionGlyph)
-        viewport()->setCursor(Qt::PointingHandCursor);
-    else
-        viewport()->unsetCursor();
+    updateViewportCursor(event->pos(), overActionGlyph);
 
     setHoverActionToolTip(actionBadge == CopyActionBadge ? tr("Copy result")
         : actionBadge == EditActionBadge ? tr("Edit expression")
@@ -1765,6 +1813,9 @@ void ResultDisplay::scrollContentsBy(int dx, int dy)
 {
     QPlainTextEdit::scrollContentsBy(dx, dy);
     updateScrollToBottomButtonVisibility();
+    // Text moved under a resting mouse: re-evaluate text vs. blank space.
+    if (viewport()->underMouse())
+        updateViewportCursorAtMouse();
     viewport()->update();
 }
 

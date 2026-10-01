@@ -3892,8 +3892,8 @@ void TestEditorUi::completion_popup_uses_configured_surface_colors()
     QCOMPARE(popup->palette().color(QPalette::Text), foreground);
     QCOMPARE(popup->palette().color(QPalette::Highlight), selectedRow);
     QCOMPARE(popup->palette().color(QPalette::HighlightedText), selectedRowForeground);
-    QCOMPARE(popup->cursor().shape(), Qt::PointingHandCursor);
-    QCOMPARE(popup->viewport()->cursor().shape(), Qt::PointingHandCursor);
+    QCOMPARE(popup->cursor().shape(), Qt::ArrowCursor);
+    QCOMPARE(popup->viewport()->cursor().shape(), Qt::ArrowCursor);
     QVERIFY(popup->styleSheet().contains(QStringLiteral("background: #556677")));
     QVERIFY(popup->styleSheet().contains(QStringLiteral("QScrollBar:horizontal")));
     QVERIFY(popup->styleSheet().contains(QStringLiteral("QScrollBar::handle:horizontal")));
@@ -3937,8 +3937,8 @@ void TestEditorUi::constant_completion_popup_uses_configured_surface_colors()
         QCOMPARE(popup->palette().color(QPalette::Text), foreground);
         QCOMPARE(popup->palette().color(QPalette::Highlight), selectedRow);
         QCOMPARE(popup->palette().color(QPalette::HighlightedText), selectedRowForeground);
-        QCOMPARE(popup->cursor().shape(), Qt::PointingHandCursor);
-        QCOMPARE(popup->viewport()->cursor().shape(), Qt::PointingHandCursor);
+        QCOMPARE(popup->cursor().shape(), Qt::ArrowCursor);
+        QCOMPARE(popup->viewport()->cursor().shape(), Qt::ArrowCursor);
         QVERIFY(popup->styleSheet().contains(QStringLiteral("background: #556677")));
         QVERIFY(popup->styleSheet().contains(QStringLiteral("QScrollBar:horizontal")));
         QVERIFY(popup->styleSheet().contains(QStringLiteral("QScrollBar::handle:horizontal")));

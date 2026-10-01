@@ -1451,16 +1451,6 @@ bool isComboBoxPopupView(const QAbstractItemView* view, const QList<QComboBox*>&
     return false;
 }
 
-void updateDockSystemTabCursor(QTabBar* tabBar, const QPoint& pos)
-{
-    if (tabBar == nullptr)
-        return;
-
-    tabBar->setCursor(tabBar->tabAt(pos) >= 0
-                          ? Qt::PointingHandCursor
-                          : Qt::ArrowCursor);
-}
-
 void applyGeneratedDockChromeSurfaces(MainWindow* owner,
                                       QDockWidget* dock,
                                       const GeneratedThemeSurfaces& surfaces)
@@ -1519,7 +1509,7 @@ void applyGeneratedDockChromeSurfaces(MainWindow* owner,
                             titleButtonHover.foreground);
         if (owner != nullptr)
             button->installEventFilter(owner);
-        button->setCursor(Qt::PointingHandCursor);
+        button->setCursor(Qt::ArrowCursor);
         button->setMouseTracking(true);
         button->setAttribute(Qt::WA_Hover, true);
         button->setFixedSize(QSize(18, 18));
@@ -2323,7 +2313,7 @@ public:
             if (closeButton == nullptr) {
                 closeButton = new QToolButton(this);
                 closeButton->setAutoRaise(false);
-                closeButton->setCursor(Qt::PointingHandCursor);
+                closeButton->setCursor(Qt::ArrowCursor);
                 closeButton->setFocusPolicy(Qt::NoFocus);
                 closeButton->setText(QStringLiteral("×"));
                 closeButton->setStyleSheet(QStringLiteral(R"(
@@ -2582,7 +2572,6 @@ protected:
     {
         m_hoveredTabIndex = -1;
         hideTabToolTip();
-        setCursor(Qt::ArrowCursor);
         refreshCloseButtons();
         update();
         QTabBar::leaveEvent(event);
@@ -2750,7 +2739,6 @@ private:
             refreshCloseButtons();
             update();
         }
-        setCursor(hoveredTabIndex >= 0 ? Qt::PointingHandCursor : Qt::ArrowCursor);
     }
 
     QRect pillRect(const QRect& tabRect) const
@@ -4273,16 +4261,16 @@ void MainWindow::createStatusBar()
     m_status.resultPrecisionLabel->setFont(boldFont);
     m_status.resultPrecisionSeparator->setContentsMargins(2, 0, 2, 0);
     m_status.angleUnitSeparator->setContentsMargins(2, 0, 2, 0);
-    m_status.angleUnitLabel->setCursor(Qt::PointingHandCursor);
-    m_status.resultFormatLabel->setCursor(Qt::PointingHandCursor);
-    m_status.resultPrecisionLabel->setCursor(Qt::PointingHandCursor);
+    m_status.angleUnitLabel->setCursor(Qt::ArrowCursor);
+    m_status.resultFormatLabel->setCursor(Qt::ArrowCursor);
+    m_status.resultPrecisionLabel->setCursor(Qt::ArrowCursor);
     m_status.angleUnitLabel->installEventFilter(this);
     m_status.resultFormatLabel->installEventFilter(this);
     m_status.resultPrecisionLabel->installEventFilter(this);
 
-    m_status.angleUnit->setCursor(Qt::PointingHandCursor);
-    m_status.resultFormat->setCursor(Qt::PointingHandCursor);
-    m_status.resultPrecision->setCursor(Qt::PointingHandCursor);
+    m_status.angleUnit->setCursor(Qt::ArrowCursor);
+    m_status.resultFormat->setCursor(Qt::ArrowCursor);
+    m_status.resultPrecision->setCursor(Qt::ArrowCursor);
 
     m_status.angleUnit->setFocusPolicy(Qt::NoFocus);
     m_status.resultFormat->setFocusPolicy(Qt::NoFocus);
@@ -6320,7 +6308,7 @@ void MainWindow::applyThemeSurfacePalette()
                 tabBar->setAttribute(Qt::WA_Hover, true);
                 tabBar->installEventFilter(this);
             }
-            updateDockSystemTabCursor(tabBar, tabBar->mapFromGlobal(QCursor::pos()));
+            tabBar->setCursor(Qt::ArrowCursor);
             tabBar->setDrawBase(false);
             tabBar->setPalette(tabBarPalette);
             tabBar->setStyleSheet(QStringLiteral(
@@ -10968,18 +10956,8 @@ bool MainWindow::eventFilter(QObject* o, QEvent* e)
 
     if (QTabBar* tabBar = qobject_cast<QTabBar*>(o);
         tabBar != nullptr && tabBar->property("speedcrunchDockSystemTabBar").toBool()) {
-        if (e->type() == QEvent::Enter) {
-            QEnterEvent* enterEvent = static_cast<QEnterEvent*>(e);
-            updateDockSystemTabCursor(tabBar, enterEvent->position().toPoint());
-        } else if (e->type() == QEvent::HoverEnter || e->type() == QEvent::HoverMove) {
-            QHoverEvent* hoverEvent = static_cast<QHoverEvent*>(e);
-            updateDockSystemTabCursor(tabBar, hoverEvent->position().toPoint());
-        } else if (e->type() == QEvent::MouseMove) {
-            QMouseEvent* mouseEvent = static_cast<QMouseEvent*>(e);
-            updateDockSystemTabCursor(tabBar, mouseEvent->pos());
-        } else if (e->type() == QEvent::Leave) {
-            tabBar->setCursor(Qt::ArrowCursor);
-        }
+        // Dock tabs keep the arrow (macOS convention for tabs); nothing below
+        // applies to them.
         return QMainWindow::eventFilter(o, e);
     }
 

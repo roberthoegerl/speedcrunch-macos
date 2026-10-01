@@ -71,7 +71,7 @@ BitWidget::BitWidget(int bitPosition, QWidget* parent)
 
     setText(QString("%1").arg(bitPosition));
     setObjectName("BitWidget");
-    setCursor(Qt::PointingHandCursor);
+    setCursor(Qt::ArrowCursor);
     setMouseTracking(true);
     setAttribute(Qt::WA_Hover, true);
     updateStyle();
@@ -630,7 +630,7 @@ bool BitFieldWidget::eventFilter(QObject* watched, QEvent* event)
 void BitFieldWidget::setupButton(QPushButton* button)
 {
     button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    button->setCursor(Qt::PointingHandCursor);
+    button->setCursor(Qt::ArrowCursor);
     button->setMouseTracking(true);
     button->setAttribute(Qt::WA_Hover, true);
     button->setToolTip(QString());

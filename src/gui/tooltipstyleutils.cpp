@@ -191,8 +191,8 @@ void applyTreePopupTheme(QTreeWidget* popup, const TreePopupTheme& theme)
     popup->setPalette(palette);
     popup->viewport()->setPalette(palette);
     popup->viewport()->setAutoFillBackground(true);
-    popup->setCursor(Qt::PointingHandCursor);
-    popup->viewport()->setCursor(Qt::PointingHandCursor);
+    popup->setCursor(Qt::ArrowCursor);
+    popup->viewport()->setCursor(Qt::ArrowCursor);
 
     popup->setStyleSheet(QStringLiteral(
         "QTreeWidget {"

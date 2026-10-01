@@ -119,6 +119,7 @@ protected:
     virtual void leaveEvent(QEvent*);
     virtual void mouseDoubleClickEvent(QMouseEvent*);
     virtual void mousePressEvent(QMouseEvent*);
+    virtual void mouseReleaseEvent(QMouseEvent*);
     virtual void mouseMoveEvent(QMouseEvent*);
     virtual void paintEvent(QPaintEvent*);
     virtual void resizeEvent(QResizeEvent*);
@@ -177,6 +178,9 @@ private:
     HoveredActionBadge actionBadgeAtPosition(int historyIndex, const QPoint& pos) const;
     int historyIndexForActionBadgeAtPosition(const QPoint& pos) const;
     void setHoveredActionBadge(HoveredActionBadge badge);
+    bool isTextAtPosition(const QPoint& pos) const;
+    void updateViewportCursor(const QPoint& pos, bool overControl = false);
+    void updateViewportCursorAtMouse();
     void setHoverActionToolTip(const QString& text);
     void applyHoverActionPopupTheme();
     void ensureHoverActionPopup();
@@ -218,6 +222,7 @@ private:
     QColor m_contextMenuHoverForegroundColor;
     HoveredActionBadge m_hoveredActionBadge;
     bool m_scrollToBottomButtonHovered;
+    bool m_mouseSelecting = false;
     QToolButton* m_scrollToBottomButton;
 };
 

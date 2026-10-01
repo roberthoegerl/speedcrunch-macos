@@ -182,9 +182,9 @@ private:
     QAbstractItemView* m_view;
 };
 
-class DockListCursorFilter : public QObject {
+class DockListHoverFilter : public QObject {
 public:
-    explicit DockListCursorFilter(QAbstractItemView* view)
+    explicit DockListHoverFilter(QAbstractItemView* view)
         : QObject(view)
         , m_view(view)
     {
@@ -210,7 +210,6 @@ protected:
             updateHoveredIndex(m_view->indexAt(hoverEvent->position().toPoint()));
         } else if (event->type() == QEvent::Leave || event->type() == QEvent::HoverLeave) {
             updateHoveredIndex(QModelIndex());
-            m_view->viewport()->setCursor(Qt::ArrowCursor);
         } else if (event->type() == QEvent::Resize) {
             const QList<QLabel*> labels = m_view->viewport()->findChildren<QLabel*>(
                 QString(), Qt::FindDirectChildrenOnly);
@@ -233,8 +232,6 @@ private:
             updateRow(previousHoveredRow);
             updateRow(hoveredRow);
         }
-        m_view->viewport()->setCursor(
-            hoveredIndex.isValid() ? Qt::PointingHandCursor : Qt::ArrowCursor);
     }
 
     void updateRow(int row)
@@ -265,9 +262,9 @@ void apply(QAbstractItemView* view)
     view->setFrameShape(QFrame::NoFrame);
     view->setProperty("dockListHoveredRow", -1);
     view->setItemDelegate(new DockListItemDelegate(view));
-    DockListCursorFilter* cursorFilter = new DockListCursorFilter(view);
-    view->installEventFilter(cursorFilter);
-    view->viewport()->installEventFilter(cursorFilter);
+    DockListHoverFilter* hoverFilter = new DockListHoverFilter(view);
+    view->installEventFilter(hoverFilter);
+    view->viewport()->installEventFilter(hoverFilter);
 }
 
 void showCenteredNoMatchLabel(QAbstractItemView* view, QLabel* label)

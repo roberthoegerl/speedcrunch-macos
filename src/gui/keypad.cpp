@@ -713,7 +713,7 @@ void Keypad::createButtons()
     for (int i = 0; i < keyDescriptionsCount; ++i) {
         const KeyDescription* description = keyDescriptions + i;
         QPushButton* key = new QPushButton(description->label, this);
-        key->setCursor(Qt::PointingHandCursor);
+        key->setCursor(Qt::ArrowCursor);
         key->setMouseTracking(true);
         key->setAttribute(Qt::WA_Hover, true);
         key->setStyleSheet(keypadButtonStyleSheet(palette()));
@@ -790,7 +790,7 @@ void Keypad::createCustomButtons()
 
     for (const auto& description : m_customButtons) {
         QPushButton* key = new QPushButton(description.label, this);
-        key->setCursor(Qt::PointingHandCursor);
+        key->setCursor(Qt::ArrowCursor);
         key->setFont(boldFont);
         key->setStyleSheet(keypadButtonStyleSheet(palette()));
         QObject::connect(key, &QPushButton::clicked, this, [this, description]() {
