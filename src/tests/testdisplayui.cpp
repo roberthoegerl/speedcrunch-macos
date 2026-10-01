@@ -2013,7 +2013,11 @@ void TestDisplayUi::main_window_uses_generated_theme_surface_for_chrome_and_edit
         QVERIFY(editor->styleSheet().contains(QStringLiteral("border-radius: 13px")));
         QVERIFY(editor->styleSheet().contains(QStringLiteral("padding: 10px 18px")));
         QVERIFY(editor->viewport()->styleSheet().contains(QStringLiteral("background: transparent")));
-        QTRY_COMPARE(editor->cursorWidth(), 2);
+        // The focused editor shows the themed 2 px caret overlay; the native
+        // caret stays hidden (width 0) so the base paint never draws it. The
+        // overlay's pixels and blinking are checked in
+        // dock_surfaces_use_successive_generated_shades.
+        QTRY_COMPARE(editor->cursorWidth(), 0);
         QCOMPARE(editor->graphicsEffect(), nullptr);
         QVERIFY(editor->mask().isEmpty());
         QCOMPARE(keypad->palette().color(QPalette::Window).name(), expectedKeypadSurface.name());
@@ -3052,11 +3056,15 @@ void TestDisplayUi::dock_surfaces_use_successive_generated_shades()
     editor->setText(QStringLiteral("123"));
     editor->setCursorPosition(editor->text().size());
     QCoreApplication::processEvents();
+    // The visible caret is the themed 2 px overlay, drawn at the native caret's
+    // left edge. The native caret itself is kept at width 0 while the overlay is
+    // active, so cursorRect() is zero-width (QRect::isValid() is false) but still
+    // carries the caret position and height.
     const QRect editorNativeCursorRect = editor->cursorRect();
-    QVERIFY(editorNativeCursorRect.isValid());
+    QCOMPARE(editorNativeCursorRect.width(), 0);
     QVERIFY(editorNativeCursorRect.height() > 0);
     const QRect editorCursorRect(
-        editorNativeCursorRect.x() + (editorNativeCursorRect.width() - 2) / 2,
+        editorNativeCursorRect.x(),
         editorNativeCursorRect.y(),
         2,
         editorNativeCursorRect.height());
