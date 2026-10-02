@@ -15,7 +15,7 @@ source) and adds an optional Classic Appearance toggle for a more compact interf
 **[Get the latest release](https://github.com/roberthoegerl/speedcrunch-macos/releases/latest)**
 (on GitHub, downloads are under "Releases", on the right of the page).
 
-- Apple Silicon (M1/M2/M3/M4): `...-macOS-arm64.dmg`
+- Apple Silicon (M1 or later): `...-macOS-arm64.dmg`
 - Intel: `...-macOS-x86_64.dmg`
 
 ## First launch
@@ -30,7 +30,7 @@ As I don't have an Apple Developer account, this release is not notarized by App
 
 ## Build
 
-Version 1.0 (`1.0-608-gdd9244c1`), Qt 6.11.2, requires macOS 13 or newer.
+Version 1.0 (`1.0-611-ga68a674a`), Qt 6.11.2, requires macOS 13 or newer.
 
 Based on upstream `master` commit
 [`b598d91d`](https://bitbucket.org/heldercorreia/speedcrunch/commits/b598d91db29333eb3536ff0fe86c2abcfe5c6ad8).
