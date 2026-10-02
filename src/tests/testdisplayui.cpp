@@ -672,6 +672,9 @@ private slots:
     void restored_session_layout_reapplies_generated_theme_surfaces();
     void saved_window_ui_state_overrides_defaults_before_show();
     void visible_window_applies_restored_dock_and_keypad_layout();
+    void startup_restored_layout_activates_editor_without_input();
+    void startup_paints_no_misplaced_hint_or_dock_tab_bar();
+    void state_label_follows_editor_when_shown_before_window();
     void dock_surfaces_use_successive_generated_shades();
     void restored_constants_dock_empty_filter_fills_header();
     void dock_scroll_corner_uses_scrollbar_track_fill();
@@ -2591,6 +2594,159 @@ void TestDisplayUi::saved_window_ui_state_overrides_defaults_before_show()
     QVERIFY(constantsDock != nullptr);
     QVERIFY(constantsDock->isHidden());
     QCOMPARE(restoredWindow.size(), compactSize);
+}
+
+namespace {
+
+// Startup with a saved single-pane layout and empty history: the configuration
+// in which the restored pane replaces the initial one after the window is shown.
+void prepareRestoredStartupLayout(Settings* settings)
+{
+    settings->sessionLayoutJson.clear();
+    settings->constantsDockVisible = false;
+    settings->functionsDockVisible = false;
+    settings->historyDockVisible = false;
+    settings->formulaBookDockVisible = false;
+    settings->variablesDockVisible = false;
+    settings->userFunctionsDockVisible = false;
+    settings->userUnitsDockVisible = false;
+    settings->bitfieldVisible = false;
+    settings->keypadMode = Settings::KeypadModeDisabled;
+    settings->keypadVisible = false;
+    settings->hasNumberFormatStyleSetting = true;
+    settings->showEmptyHistoryHint = true;
+    MainWindow sourceWindow;
+    sourceWindow.show();
+    QCoreApplication::processEvents();
+    sourceWindow.persistSessionAndSettingsForShutdown();
+}
+
+// Records every paint of the empty-history hint whose bottom is not directly
+// above the window's input editor (e.g. painted at the window's top-left), and
+// every paint of a dock-area tab bar inside the window while no dock is open
+// (a stray bar, e.g. "User Units", at the window origin).
+class StartupPaintRecorder : public QObject {
+public:
+    explicit StartupPaintRecorder(QMainWindow* window) : m_window(window) {}
+    QStringList misplacedPaints;
+    int paints = 0;
+
+protected:
+    bool eventFilter(QObject* watched, QEvent* event) override
+    {
+        if (event->type() != QEvent::Paint)
+            return false;
+        if (QTabBar* tabBar = qobject_cast<QTabBar*>(watched);
+            tabBar != nullptr && tabBar->parentWidget() == m_window
+            && tabBar->geometry().intersects(m_window->rect())) {
+            QStringList tabs;
+            for (int i = 0; i < tabBar->count(); ++i)
+                tabs << tabBar->tabText(i);
+            misplacedPaints << QStringLiteral("dock tab bar [%1] at %2,%3")
+                .arg(tabs.join(QLatin1Char(','))).arg(tabBar->x()).arg(tabBar->y());
+            return false;
+        }
+        QLabel* label = qobject_cast<QLabel*>(watched);
+        if (label == nullptr || label->parentWidget() != m_window
+            || label->text() != QStringLiteral("Type an expression here"))
+            return false;
+        ++paints;
+        const QList<Editor*> editors = m_window->findChildren<Editor*>();
+        if (editors.size() != 1) {
+            misplacedPaints << QStringLiteral("%1 editors while painting").arg(editors.size());
+            return false;
+        }
+        const int labelBottom = label->geometry().bottom() + 1;
+        const int editorTop = editors.first()->mapTo(m_window, QPoint(0, 0)).y();
+        if (qAbs(labelBottom - editorTop) > 2)
+            misplacedPaints << QStringLiteral("label bottom %1, editor top %2").arg(labelBottom).arg(editorTop);
+        return false;
+    }
+
+private:
+    QMainWindow* m_window;
+};
+
+QLabel* visibleEmptyHistoryHint(QMainWindow* window)
+{
+    for (QLabel* label : window->findChildren<QLabel*>(QString(), Qt::FindDirectChildrenOnly)) {
+        if (!label->isHidden() && label->text() == QStringLiteral("Type an expression here"))
+            return label;
+    }
+    return nullptr;
+}
+
+}
+
+void TestDisplayUi::startup_restored_layout_activates_editor_without_input()
+{
+    MainWindowStateGuard guard;
+    const bool oldShowEmptyHistoryHint = guard.settings->showEmptyHistoryHint;
+    const auto restoreHint = qScopeGuard([&] { guard.settings->showEmptyHistoryHint = oldShowEmptyHistoryHint; });
+    prepareRestoredStartupLayout(guard.settings);
+    QVERIFY(!guard.settings->sessionLayoutJson.isEmpty());
+
+    MainWindow window;
+    window.show();
+    window.activateWindow();
+    QVERIFY(QTest::qWaitForWindowActive(&window));
+
+    // No key or mouse input: the restored input must be focused and draw its
+    // caret on its own (it used to wait for the first key press).
+    QTRY_COMPARE(window.findChildren<Editor*>().size(), 1);
+    Editor* editor = window.findChildren<Editor*>().first();
+    QTRY_VERIFY(editor->hasFocus());
+    QTRY_VERIFY(editor->themedCursorEnabled());
+}
+
+void TestDisplayUi::startup_paints_no_misplaced_hint_or_dock_tab_bar()
+{
+    MainWindowStateGuard guard;
+    const bool oldShowEmptyHistoryHint = guard.settings->showEmptyHistoryHint;
+    const auto restoreHint = qScopeGuard([&] { guard.settings->showEmptyHistoryHint = oldShowEmptyHistoryHint; });
+    prepareRestoredStartupLayout(guard.settings);
+    QVERIFY(!guard.settings->sessionLayoutJson.isEmpty());
+
+    MainWindow window;
+    // The session restore is still in flight: the panes are not final, so the
+    // empty-history hint must not be decided (or shown) yet.
+    QVERIFY(visibleEmptyHistoryHint(&window) == nullptr);
+    StartupPaintRecorder recorder(&window);
+    qApp->installEventFilter(&recorder);
+    window.show();
+    window.activateWindow();
+    QVERIFY(QTest::qWaitForWindowActive(&window));
+    QTRY_VERIFY(recorder.paints > 0);
+    QTest::qWait(400); // the restore and activation chain settle within this
+    qApp->removeEventFilter(&recorder);
+    QVERIFY2(recorder.misplacedPaints.isEmpty(),
+             qPrintable(recorder.misplacedPaints.join(QStringLiteral("; "))));
+}
+
+void TestDisplayUi::state_label_follows_editor_when_shown_before_window()
+{
+    MainWindowStateGuard guard;
+    const bool oldShowEmptyHistoryHint = guard.settings->showEmptyHistoryHint;
+    const auto restoreHint = qScopeGuard([&] { guard.settings->showEmptyHistoryHint = oldShowEmptyHistoryHint; });
+    guard.settings->sessionLayoutJson.clear();
+    guard.settings->hasNumberFormatStyleSetting = true;
+    guard.settings->showEmptyHistoryHint = true;
+
+    // Shown while the window is still hidden, i.e. before its layout has placed
+    // the editor: the label must move with the editor once the layout settles.
+    MainWindow window;
+    QVERIFY(QMetaObject::invokeMethod(&window, "showReadyMessage", Qt::DirectConnection));
+    QVERIFY(visibleEmptyHistoryHint(&window) != nullptr);
+    StartupPaintRecorder recorder(&window);
+    qApp->installEventFilter(&recorder);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    // Every painted frame counts, not just the final position: the label used to
+    // be painted at the window's top-left until something else re-placed it.
+    QTRY_VERIFY(recorder.paints > 0);
+    qApp->removeEventFilter(&recorder);
+    QVERIFY2(recorder.misplacedPaints.isEmpty(),
+             qPrintable(recorder.misplacedPaints.join(QStringLiteral("; "))));
 }
 
 void TestDisplayUi::visible_window_applies_restored_dock_and_keypad_layout()

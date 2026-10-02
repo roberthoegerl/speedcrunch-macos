@@ -21,6 +21,12 @@ public:
         UpDownArrowBehaviorSingleLineOnly = 2
     };
 
+    enum HistorySpacing {
+        HistorySpacingSmall = 0,
+        HistorySpacingMedium = 1,
+        HistorySpacingLarge = 2
+    };
+
     enum KeypadMode {
         KeypadModeDisabled = 0,
         KeypadModeBasicWide = 1,
@@ -189,6 +195,7 @@ public:
     QString customColorSchemeJson;
     QString displayFont;
     bool classicAppearance = false; // Compact 0.12-style look: no accent frame, small state label, tight operator spacing.
+    HistorySpacing historySpacing = HistorySpacingMedium; // Gap between history entries.
     QString sessionLayoutJson;
 
     QString language;

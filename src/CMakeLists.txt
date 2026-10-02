@@ -74,6 +74,13 @@ ADD_DEFINITIONS("-DSPEEDCRUNCH_BUILD_ID=\"${speedcrunch_BUILD_ID}\"")
 ADD_DEFINITIONS(-DQT_USE_QSTRINGBUILDER)
 
 include(SourceFiles.cmake)
+if(APPLE)
+    # Native alert placement (Objective-C++); used by MainWindow.
+    enable_language(OBJCXX)
+    list(APPEND speedcrunch_SOURCES gui/macalertplacement.mm)
+    list(APPEND testdisplayui_SOURCES gui/macalertplacement.mm)
+    set_source_files_properties(gui/macalertplacement.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
+endif()
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
 # Legacy GNU bc number implementation uses K&R-style definitions.
@@ -140,6 +147,9 @@ add_custom_target(confclean COMMAND rm -rf Makefile CMakeFiles/ CMakeCache.txt c
 
 set(QT_LIBRARIES Qt6::Widgets Qt6::Help Qt6::Network Qt6::Core)
 target_link_libraries(${APPLICATION_NAME} ${QT_LIBRARIES})
+if(APPLE)
+    target_link_libraries(${APPLICATION_NAME} "-framework AppKit")
+endif()
 
 enable_testing()
 
@@ -181,6 +191,9 @@ add_test(NAME testdocksui COMMAND testdocksui)
 
 add_executable(testdisplayui ${testdisplayui_SOURCES})
 target_link_libraries(testdisplayui ${QT_LIBRARIES} Qt6::Test)
+if(APPLE)
+    target_link_libraries(testdisplayui "-framework AppKit")
+endif()
 add_test(NAME testdisplayui COMMAND testdisplayui)
 
 set_property(TARGET ${APPLICATION_NAME} APPEND PROPERTY COMPILE_DEFINITIONS $<$<CONFIG:Debug>:EVALUATOR_DEBUG>)

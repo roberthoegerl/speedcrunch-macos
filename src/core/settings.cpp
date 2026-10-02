@@ -580,6 +580,9 @@ void Settings::load()
     colorScheme = settings->value(key + QLatin1String("ColorSchemeName"), DefaultColorScheme).toString();
     customColorSchemeJson = settings->value(key + QLatin1String("CustomColorSchemeJson"), QString()).toString();
     classicAppearance = settings->value(key + QLatin1String("ClassicAppearance"), false).toBool();
+    const int spacing = settings->value(key + QLatin1String("HistorySpacing"), HistorySpacingMedium).toInt();
+    historySpacing = (spacing >= HistorySpacingSmall && spacing <= HistorySpacingLarge)
+        ? static_cast<HistorySpacing>(spacing) : HistorySpacingMedium;
 
     delete settings;
 }
@@ -697,6 +700,7 @@ void Settings::save()
     settings->setValue(key + QLatin1String("ColorSchemeName"), colorScheme);
     settings->setValue(key + QLatin1String("CustomColorSchemeJson"), customColorSchemeJson);
     settings->setValue(key + QLatin1String("ClassicAppearance"), classicAppearance);
+    settings->setValue(key + QLatin1String("HistorySpacing"), static_cast<int>(historySpacing));
 
 
     delete settings;

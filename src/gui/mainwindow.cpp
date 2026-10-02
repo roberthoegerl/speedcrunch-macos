@@ -3,6 +3,7 @@
 
 
 #include "gui/mainwindow.h"
+#include "gui/macalertplacement.h"
 
 #include "core/complexform.h"
 #include "core/constants.h"
@@ -144,6 +145,30 @@
 #include "windows.h"
 #include <shlobj.h>
 #endif // Q_OS_WIN32
+
+namespace {
+
+// Calls back whenever a watched widget moves, resizes or is shown; used to keep
+// a floating label anchored to a widget whose position settles later.
+class GeometryChangeWatcher : public QObject {
+public:
+    GeometryChangeWatcher(std::function<void()> callback, QObject* parent)
+        : QObject(parent), m_callback(std::move(callback)) {}
+
+protected:
+    bool eventFilter(QObject* watched, QEvent* event) override
+    {
+        if (event->type() == QEvent::Move || event->type() == QEvent::Resize
+            || event->type() == QEvent::Show)
+            m_callback();
+        return QObject::eventFilter(watched, event);
+    }
+
+private:
+    std::function<void()> m_callback;
+};
+
+}
 
 namespace {
 constexpr const char* kFeedbackUrl = "https://www.speedcrunch.org/issues.html";
@@ -3392,6 +3417,9 @@ void MainWindow::createActions()
     m_actions.settingsBehaviorLeaveLastExpression = new QAction(this);
     m_actions.settingsBehaviorNumberFormat = new QAction(this);
     m_actions.settingsBehaviorResultSlots = new QAction(this);
+    m_actions.settingsDisplayHistorySpacingSmall = new QAction(this);
+    m_actions.settingsDisplayHistorySpacingMedium = new QAction(this);
+    m_actions.settingsDisplayHistorySpacingLarge = new QAction(this);
     m_actions.settingsBehaviorUpDownArrowNever = new QAction(this);
     m_actions.settingsBehaviorUpDownArrowAlways = new QAction(this);
     m_actions.settingsBehaviorUpDownArrowSingleLineOnly = new QAction(this);
@@ -3472,6 +3500,12 @@ void MainWindow::createActions()
     m_actions.settingsBehaviorAutoCompletionUserVariables->setCheckable(true);
     m_actions.settingsBehaviorEmptyHistoryHint->setCheckable(true);
     m_actions.settingsBehaviorLeaveLastExpression->setCheckable(true);
+    m_actions.settingsDisplayHistorySpacingSmall->setCheckable(true);
+    m_actions.settingsDisplayHistorySpacingSmall->setData(Settings::HistorySpacingSmall);
+    m_actions.settingsDisplayHistorySpacingMedium->setCheckable(true);
+    m_actions.settingsDisplayHistorySpacingMedium->setData(Settings::HistorySpacingMedium);
+    m_actions.settingsDisplayHistorySpacingLarge->setCheckable(true);
+    m_actions.settingsDisplayHistorySpacingLarge->setData(Settings::HistorySpacingLarge);
     m_actions.settingsBehaviorUpDownArrowNever->setCheckable(true);
     m_actions.settingsBehaviorUpDownArrowNever->setData(Settings::UpDownArrowBehaviorNever);
     m_actions.settingsBehaviorUpDownArrowAlways->setCheckable(true);
@@ -3786,6 +3820,9 @@ void MainWindow::setActionsText()
     m_actions.settingsBehaviorResultSlots->setText(MainWindow::tr("Notation && Precision..."));
     m_actions.settingsBehaviorLeaveLastExpression->setToolTip(MainWindow::tr("After pressing Enter, keep the entered expression selected in the editor."));
     m_actions.settingsBehaviorLeaveLastExpression->setStatusTip(MainWindow::tr("After pressing Enter, keep the entered expression selected in the editor."));
+    m_actions.settingsDisplayHistorySpacingSmall->setText(MainWindow::tr("Small"));
+    m_actions.settingsDisplayHistorySpacingMedium->setText(MainWindow::tr("Medium"));
+    m_actions.settingsDisplayHistorySpacingLarge->setText(MainWindow::tr("Large"));
     m_actions.settingsBehaviorUpDownArrowNever->setText(MainWindow::tr("Never"));
     m_actions.settingsBehaviorUpDownArrowAlways->setText(MainWindow::tr("Always"));
     m_actions.settingsBehaviorUpDownArrowSingleLineOnly->setText(MainWindow::tr("Only for Single-Line Expressions"));
@@ -3917,6 +3954,11 @@ void MainWindow::createActionGroups()
     m_actionGroups.digitGrouping->addAction(m_actions.settingsBehaviorDigitGroupingTwoSpaces);
     m_actionGroups.digitGrouping->addAction(m_actions.settingsBehaviorDigitGroupingThreeSpaces);
 
+    m_actionGroups.historySpacing = new QActionGroup(this);
+    m_actionGroups.historySpacing->addAction(m_actions.settingsDisplayHistorySpacingSmall);
+    m_actionGroups.historySpacing->addAction(m_actions.settingsDisplayHistorySpacingMedium);
+    m_actionGroups.historySpacing->addAction(m_actions.settingsDisplayHistorySpacingLarge);
+
     m_actionGroups.upDownArrowBehavior = new QActionGroup(this);
     m_actionGroups.upDownArrowBehavior->addAction(m_actions.settingsBehaviorUpDownArrowNever);
     m_actionGroups.upDownArrowBehavior->addAction(m_actions.settingsBehaviorUpDownArrowAlways);
@@ -3946,6 +3988,18 @@ void MainWindow::createActionShortcuts()
     m_actions.sessionNewTab->setShortcuts(QKeySequence::AddTab);
     m_actions.sessionQuit->setShortcut(Qt::CTRL | Qt::Key_Q);
     m_actions.editCopyLastResult->setShortcut(Qt::CTRL | Qt::Key_R);
+    // Esc is handled by the editor (it also closes popups and cancels history
+    // edits), so the menu only shows it: a widget-context shortcut on a menu-bar
+    // action never fires from the editor.
+    m_actions.editClearExpression->setShortcut(Qt::Key_Escape);
+    m_actions.editClearExpression->setShortcutContext(Qt::WidgetShortcut);
+    // Control-L clears the history, like clearing the screen in a terminal
+    // (Qt::META is the Control key on macOS; Qt::CTRL there is Command).
+#if defined(Q_OS_MACOS)
+    m_actions.editClearHistory->setShortcut(Qt::META | Qt::Key_L);
+#else
+    m_actions.editClearHistory->setShortcut(Qt::CTRL | Qt::Key_L);
+#endif
     m_actions.editCopy->setShortcut(Qt::CTRL | Qt::Key_C);
     m_actions.editPaste->setShortcut(Qt::CTRL | Qt::Key_V);
     m_actions.editSelectExpression->setShortcut(Qt::CTRL | Qt::Key_A);
@@ -4043,6 +4097,10 @@ void MainWindow::createMenus()
     m_menus.display->addAction(m_actions.settingsBehaviorSyntaxHighlighting);
     m_menus.display->addAction(m_actions.settingsBehaviorHoverHighlightResults);
     m_menus.display->addAction(m_actions.settingsDisplayClassicAppearance);
+    m_menus.historySpacing = m_menus.display->addMenu("");
+    m_menus.historySpacing->addAction(m_actions.settingsDisplayHistorySpacingSmall);
+    m_menus.historySpacing->addAction(m_actions.settingsDisplayHistorySpacingMedium);
+    m_menus.historySpacing->addAction(m_actions.settingsDisplayHistorySpacingLarge);
     m_menus.editing = m_menus.settings->addMenu("");
     m_menus.autoCompletion = m_menus.editing->addMenu("");
     m_menus.autoCompletion->addAction(m_actions.settingsBehaviorAutoCompletionBuiltInFunctions);
@@ -4174,6 +4232,7 @@ void MainWindow::setMenusText()
     m_menus.editing->setTitle(MainWindow::tr("&Editing"));
     m_menus.autoCompletion->setTitle(MainWindow::tr("A&utocomplete"));
     m_menus.upDownArrowBehavior->setTitle(MainWindow::tr("Up/Down Arrow History"));
+    m_menus.historySpacing->setTitle(MainWindow::tr("History &Spacing"));
     m_menus.display->setTitle(MainWindow::tr("&Appearance"));
     m_menus.help->setTitle(MainWindow::tr("&Help"));
 }
@@ -4340,16 +4399,23 @@ void MainWindow::createFixedWidgets()
     m_widgets.display->setFrameStyle(QFrame::NoFrame);
     m_widgets.editor = new Editor();
     m_widgets.editor->setFrameStyle(QFrame::NoFrame);
-    m_widgets.editor->setFocus();
     m_widgets.editor->installEventFilter(this);
     m_widgets.editor->viewport()->installEventFilter(this);
     m_widgets.splitContainer->addWidget(createEditorDisplayPane(m_widgets.display, m_widgets.editor));
+    // Only now: setFocus() on a widget without a window is dropped on reparenting.
+    m_widgets.editor->setFocus();
     m_paneSessionNames.insert(m_widgets.display, m_session ? m_session->name() : QString());
     m_paneSessionTabs.insert(m_widgets.display, QStringList(m_session ? m_session->name() : QString()));
     m_widgets.display->setSession(m_session);
     m_widgets.editor->setSession(m_session);
 
     m_widgets.state = new QLabel(this);
+    m_stateLabelAnchorWatcher = new GeometryChangeWatcher([this]() {
+        // !isHidden(), not isVisible(): the label must also follow the editor while
+        // the window itself is not visible yet (layout settles during show()).
+        if (m_widgets.state != nullptr && !m_widgets.state->isHidden())
+            positionStateLabel();
+    }, this);
     m_widgets.state->setPalette(QToolTip::palette());
     m_widgets.state->setAutoFillBackground(true);
     m_widgets.state->setFrameShape(QFrame::NoFrame);
@@ -5295,7 +5361,7 @@ void MainWindow::copyWindowLayoutFrom(const MainWindow* source)
     if (source == nullptr)
         return;
 
-    restoreState(source->saveState(DockLayoutStateVersion), DockLayoutStateVersion);
+    restoreWindowLayoutState(source->saveState(DockLayoutStateVersion));
 
     const auto dockIsVisible = [](QDockWidget* dock) {
         return dock != nullptr && dock->isVisible();
@@ -6778,8 +6844,7 @@ void MainWindow::createKeypad()
 void MainWindow::createBookDock(bool)
 {
     if (m_docks.book) {
-        m_docks.book->show();
-        m_docks.book->raise();
+        showDock(m_docks.book);
         m_settings->formulaBookDockVisible = true;
         return;
     }
@@ -6803,8 +6868,7 @@ void MainWindow::createBookDock(bool)
 void MainWindow::createConstantsDock(bool takeFocus)
 {
     if (m_docks.constants) {
-        m_docks.constants->show();
-        m_docks.constants->raise();
+        showDock(m_docks.constants);
         if (takeFocus)
             m_docks.constants->setFocus();
         m_settings->constantsDockVisible = true;
@@ -6833,8 +6897,7 @@ void MainWindow::createConstantsDock(bool takeFocus)
 void MainWindow::createFunctionsDock(bool takeFocus)
 {
     if (m_docks.functions) {
-        m_docks.functions->show();
-        m_docks.functions->raise();
+        showDock(m_docks.functions);
         if (takeFocus)
             m_docks.functions->setFocus();
         m_settings->functionsDockVisible = true;
@@ -6858,8 +6921,7 @@ void MainWindow::createFunctionsDock(bool takeFocus)
 void MainWindow::createHistoryDock(bool)
 {
     if (m_docks.history) {
-        m_docks.history->show();
-        m_docks.history->raise();
+        showDock(m_docks.history);
         m_settings->historyDockVisible = true;
         return;
     }
@@ -6889,8 +6951,7 @@ void MainWindow::createHistoryDock(bool)
 void MainWindow::createVariablesDock(bool takeFocus)
 {
     if (m_docks.variables) {
-        m_docks.variables->show();
-        m_docks.variables->raise();
+        showDock(m_docks.variables);
         if (takeFocus)
             m_docks.variables->setFocus();
         m_settings->variablesDockVisible = true;
@@ -6926,8 +6987,7 @@ void MainWindow::createVariablesDock(bool takeFocus)
 void MainWindow::createUserFunctionsDock(bool takeFocus)
 {
     if (m_docks.userFunctions) {
-        m_docks.userFunctions->show();
-        m_docks.userFunctions->raise();
+        showDock(m_docks.userFunctions);
         if (takeFocus)
             m_docks.userFunctions->setFocus();
         m_settings->userFunctionsDockVisible = true;
@@ -6963,8 +7023,7 @@ void MainWindow::createUserFunctionsDock(bool takeFocus)
 void MainWindow::createUserUnitsDock(bool takeFocus)
 {
     if (m_docks.userUnits) {
-        m_docks.userUnits->show();
-        m_docks.userUnits->raise();
+        showDock(m_docks.userUnits);
         if (takeFocus)
             m_docks.userUnits->setFocus();
         m_settings->userUnitsDockVisible = true;
@@ -7000,16 +7059,28 @@ void MainWindow::createUserUnitsDock(bool takeFocus)
 void MainWindow::addTabifiedDock(QDockWidget* newDock, bool takeFocus, Qt::DockWidgetArea area)
 {
     connect(newDock, &QDockWidget::visibilityChanged, this, &MainWindow::handleDockWidgetVisibilityChanged);
-    addDockWidget(area, newDock);
-    // Try to find an existing dock we can tabify with.
-    const auto allDocks = m_allDocks; // TODO: Use Qt 5.7's qAsConst().
-    for (auto& d : allDocks) {
-        if (dockWidgetArea(d) == area)
-            tabifyDockWidget(d, newDock);
+    if (m_bootstrappingDocks) {
+        // applySettings() creates every dock up front (restoreState() needs them),
+        // most of them closed. Tabifying closed docks makes Qt build a tab bar for
+        // a group it never lays out, and that bar then shows at the window origin
+        // (e.g. a stray "User Units" tab). So a bootstrapped dock enters the
+        // layout hidden and is grouped only when it is first shown (showDock).
+        newDock->hide();
+        addDockWidget(area, newDock);
+        m_allDocks.append(newDock);
+        m_docksAwaitingTabify.append(newDock);
+    } else {
+        addDockWidget(area, newDock);
+        // Try to find an existing dock we can tabify with.
+        const auto allDocks = m_allDocks; // TODO: Use Qt 5.7's qAsConst().
+        for (auto& d : allDocks) {
+            if (dockWidgetArea(d) == area)
+                tabifyDockWidget(d, newDock);
+        }
+        m_allDocks.append(newDock);
+        newDock->show();
+        newDock->raise();
     }
-    m_allDocks.append(newDock);
-    newDock->show();
-    newDock->raise();
     const GeneratedThemeSurfaces surfaces = generatedSurfaceColors(m_settings);
     applyGeneratedDockContentSurfaces(this, newDock, surfaces);
     applyGeneratedDockChromeSurfaces(this, newDock, surfaces);
@@ -7025,6 +7096,22 @@ void MainWindow::addTabifiedDock(QDockWidget* newDock, bool takeFocus, Qt::DockW
     });
     if (takeFocus)
         newDock->setFocus();
+}
+
+void MainWindow::showDock(QDockWidget* dock)
+{
+    // First show of a bootstrapped dock: group it with the open docks of its area.
+    if (m_docksAwaitingTabify.removeOne(dock)) {
+        const Qt::DockWidgetArea area = dockWidgetArea(dock);
+        for (QDockWidget* other : std::as_const(m_allDocks)) {
+            if (other != dock && !other->isHidden() && dockWidgetArea(other) == area) {
+                tabifyDockWidget(other, dock);
+                break;
+            }
+        }
+    }
+    dock->show();
+    dock->raise();
 }
 
 void MainWindow::deleteDock(QDockWidget* dock)
@@ -7217,6 +7304,7 @@ void MainWindow::createFixedConnections()
     connect(m_actions.settingsBehaviorNumberFormat, SIGNAL(triggered()), SLOT(showNumberFormatDialog()));
     connectToActiveWindow(m_actions.settingsBehaviorResultSlots, &MainWindow::showResultSlotsDialog);
     connect(m_actionGroups.upDownArrowBehavior, SIGNAL(triggered(QAction*)), SLOT(setUpDownArrowBehavior(QAction*)));
+    connect(m_actionGroups.historySpacing, SIGNAL(triggered(QAction*)), SLOT(setHistorySpacing(QAction*)));
     connect(m_actions.settingsBehaviorAutoResultToClipboard, SIGNAL(toggled(bool)), SLOT(setAutoResultToClipboardEnabled(bool)));
     connect(m_actions.settingsBehaviorSimplifyResultExpressions, SIGNAL(toggled(bool)), SLOT(setSimplifyResultExpressionsEnabled(bool)));
     connect(m_actions.settingsRadixCharComma, SIGNAL(triggered()), SLOT(setRadixCharacterComma()));
@@ -7428,6 +7516,7 @@ void MainWindow::applySettings()
     const bool userUnitsDockVisible = m_settings->userUnitsDockVisible;
     const bool bitfieldVisible = m_settings->bitfieldVisible;
 
+    m_bootstrappingDocks = true;
     createBookDock(false);
     setFormulaBookDockVisible(formulaBookDockVisible, false);
     m_actions.viewFormulaBook->setChecked(formulaBookDockVisible);
@@ -7455,6 +7544,7 @@ void MainWindow::applySettings()
     createUserUnitsDock(false);
     setUserUnitsDockVisible(userUnitsDockVisible, false);
     m_actions.viewUserUnits->setChecked(userUnitsDockVisible);
+    m_bootstrappingDocks = false;
 
     createBitField();
     setBitfieldVisible(bitfieldVisible);
@@ -7491,7 +7581,7 @@ void MainWindow::applySettings()
         move(screenGeometry.center() - rect().center());
     }
     if (!hasSavedWindowLayout)
-        restoreState(m_settings->windowState, DockLayoutStateVersion);
+        restoreWindowLayoutState(m_settings->windowState);
     if (!hasSavedWindowLayout
         && m_settings->windowState.isEmpty()
         && constantsDockVisible
@@ -7528,6 +7618,18 @@ void MainWindow::applySettings()
     applyUserDefinitions();
 
     m_actions.settingsBehaviorLeaveLastExpression->setChecked(m_settings->leaveLastExpression);
+    switch (m_settings->historySpacing) {
+    case Settings::HistorySpacingSmall:
+        m_actions.settingsDisplayHistorySpacingSmall->setChecked(true);
+        break;
+    case Settings::HistorySpacingLarge:
+        m_actions.settingsDisplayHistorySpacingLarge->setChecked(true);
+        break;
+    case Settings::HistorySpacingMedium:
+    default:
+        m_actions.settingsDisplayHistorySpacingMedium->setChecked(true);
+        break;
+    }
     switch (m_settings->upDownArrowBehavior) {
     case Settings::UpDownArrowBehaviorNever:
         m_actions.settingsBehaviorUpDownArrowNever->setChecked(true);
@@ -7540,7 +7642,13 @@ void MainWindow::applySettings()
         m_actions.settingsBehaviorUpDownArrowAlways->setChecked(true);
         break;
     }
-    m_actions.settingsBehaviorEmptyHistoryHint->setChecked(m_settings->showEmptyHistoryHint);
+    {
+        // Only reflect the persisted state on the menu: the toggle slot would show
+        // the hint for the not-yet-final initial pane (before the window is even
+        // shown). finishStartupPaneSetup() decides on the hint once panes are final.
+        QSignalBlocker hintBlocker(m_actions.settingsBehaviorEmptyHistoryHint);
+        m_actions.settingsBehaviorEmptyHistoryHint->setChecked(m_settings->showEmptyHistoryHint);
+    }
     m_actions.settingsBehaviorSaveWindowPositionOnExit->setChecked(m_settings->windowPositionSave);
 
 
@@ -7639,8 +7747,33 @@ void MainWindow::applySettings()
     updateColorSchemeActionState();
     updateSplitterStyleSheet();
 
-    if (m_widgets.display != nullptr && m_widgets.display->isEmpty())
-        QTimer::singleShot(0, this, SLOT(showReadyMessage()));
+    // With a session restore in flight the panes are not final yet; the restore
+    // calls finishStartupPaneSetup() when it is done.
+    if (!m_startupPaneSetupPending)
+        finishStartupPaneSetup();
+}
+
+void MainWindow::finishStartupPaneSetup()
+{
+    // Runs once per window when its startup panes are final. Make the input the
+    // active pane (focus plus the themed caret) so typing works right away, and
+    // show the empty-history hint only when there is no history.
+    m_startupPaneSetupPending = false;
+    if (m_widgets.display == nullptr || m_widgets.editor == nullptr)
+        return;
+    if (QApplication::activeWindow() == this) {
+        // Not forced: a dock the user focused during the load keeps its focus.
+        setActiveEditorDisplayPane(m_widgets.display, m_widgets.editor);
+    } else {
+        // Becomes the window's focus child; the window-activation path then
+        // activates m_widgets.editor when the window is activated.
+        m_widgets.editor->setFocus(Qt::OtherFocusReason);
+    }
+    updatePaneEditorCursorVisibility();
+    if (m_widgets.display->isEmpty())
+        showReadyMessage();
+    else
+        hideStateLabel();
 }
 
 void MainWindow::showManualWindow()
@@ -8305,21 +8438,42 @@ void MainWindow::showAboutDialog()
     dialog.exec();
 }
 
+// Confirmation with a verb on the action button instead of Yes/No (Apple HIG),
+// Esc/Cancel to back out. On macOS this is shown as a native NSAlert (Apple's
+// layout, spacing, fonts and button order); Qt only does that when the box has no
+// style sheet, and it inherits WA_StyleSheet from the styled main window, so the
+// flag is cleared here; MacAlertCentering then centres it on the window. Elsewhere
+// it is Qt's widget message box.
+static bool confirmAction(QWidget* parent, const QString& question, const QString& detail,
+                          const QString& actionText, bool actionIsDefault)
+{
+    QMessageBox confirmation(parent);
+    confirmation.setAttribute(Qt::WA_StyleSheet, false);
+    confirmation.setIcon(QMessageBox::NoIcon);
+    confirmation.setText(question);
+    confirmation.setInformativeText(detail);
+    // In the native alert, Return only presses an AcceptRole default; a
+    // DestructiveRole button (red) never takes Return, so it is used only when
+    // Cancel is the default. (A window-modal sheet would drop the native alert.)
+    QPushButton* action = confirmation.addButton(
+        actionText, actionIsDefault ? QMessageBox::AcceptRole : QMessageBox::DestructiveRole);
+    QPushButton* cancel = confirmation.addButton(QMessageBox::Cancel);
+    confirmation.setDefaultButton(actionIsDefault ? action : cancel);
+    confirmation.setEscapeButton(cancel);
+    QShortcut escape(QKeySequence(Qt::Key_Escape), &confirmation);
+    QObject::connect(&escape, &QShortcut::activated, &confirmation, &QMessageBox::reject);
+    const MacAlertCentering centering(parent);
+    confirmation.exec();
+    return confirmation.clickedButton() == action;
+}
+
 void MainWindow::clearHistory()
 {
     if (m_session->historyIsEmpty())
         return;
 
-    QMessageBox confirmation(this);
-    confirmation.setIcon(QMessageBox::Question);
-    confirmation.setWindowTitle(tr("Clear History"));
-    confirmation.setText(tr("Are you sure you want to clear the calculation history?"));
-    confirmation.setStandardButtons(QMessageBox::Yes | QMessageBox::No);
-    confirmation.setDefaultButton(QMessageBox::No);
-    confirmation.setEscapeButton(QMessageBox::No);
-    QShortcut clearHistoryEscape(QKeySequence(Qt::Key_Escape), &confirmation);
-    connect(&clearHistoryEscape, &QShortcut::activated, &confirmation, &QMessageBox::reject);
-    if (confirmation.exec() != QMessageBox::Yes)
+    if (!confirmAction(this, tr("Clear the calculation history?"),
+                       tr("This can't be undone."), tr("Clear History"), true))
         return;
 
     m_session->clearHistory();
@@ -8341,16 +8495,10 @@ void MainWindow::clearSession()
         return;
     }
 
-    QMessageBox confirmation(this);
-    confirmation.setIcon(QMessageBox::Question);
-    confirmation.setWindowTitle(tr("Clear History"));
-    confirmation.setText(tr("Are you sure you want to clear the calculation history?"));
-    confirmation.setStandardButtons(QMessageBox::Yes | QMessageBox::No);
-    confirmation.setDefaultButton(QMessageBox::No);
-    confirmation.setEscapeButton(QMessageBox::No);
-    QShortcut clearSessionEscape(QKeySequence(Qt::Key_Escape), &confirmation);
-    connect(&clearSessionEscape, &QShortcut::activated, &confirmation, &QMessageBox::reject);
-    if (confirmation.exec() != QMessageBox::Yes)
+    if (!confirmAction(this, tr("Clear this session?"),
+                       tr("This removes its history, variables, user functions and units. "
+                          "It can't be undone."),
+                       tr("Clear Session"), false))
         return;
 
     m_session->clearHistory();
@@ -8907,16 +9055,9 @@ void MainWindow::deleteCurrentSession()
     if (m_session == nullptr)
         return;
 
-    QMessageBox confirmation(this);
-    confirmation.setIcon(QMessageBox::Question);
-    confirmation.setWindowTitle(tr("Delete Session"));
-    confirmation.setText(tr("Are you sure you want to delete this session?"));
-    confirmation.setStandardButtons(QMessageBox::Yes | QMessageBox::No);
-    confirmation.setDefaultButton(QMessageBox::No);
-    confirmation.setEscapeButton(QMessageBox::No);
-    QShortcut deleteSessionEscape(QKeySequence(Qt::Key_Escape), &confirmation);
-    connect(&deleteSessionEscape, &QShortcut::activated, &confirmation, &QMessageBox::reject);
-    if (confirmation.exec() != QMessageBox::Yes)
+    if (!confirmAction(this, tr("Delete this session?"),
+                       tr("Its file is removed. This can't be undone."),
+                       tr("Delete Session"), false))
         return;
 
     const QString deletingName = m_session->name();
@@ -9497,13 +9638,10 @@ void MainWindow::showCustomThemeDialog()
         }
         const QString destinationPath = QDir(colorSchemesPath).filePath(themeName + QLatin1String(".json"));
         if (QFileInfo::exists(destinationPath)) {
-            const QMessageBox::StandardButton answer = QMessageBox::question(
-                this,
-                tr("Overwrite Theme"),
-                tr("A custom theme named \"%1\" already exists. Do you want to overwrite it?").arg(themeName),
-                QMessageBox::Yes | QMessageBox::No,
-                QMessageBox::No);
-            if (answer != QMessageBox::Yes)
+            if (!confirmAction(this,
+                               tr("Replace the theme \"%1\"?").arg(themeName),
+                               tr("A custom theme with this name already exists."),
+                               tr("Replace"), false))
                 return;
             const QFileInfo destinationFileInfo(destinationPath);
             if (destinationFileInfo.absoluteFilePath() != importFileInfo.absoluteFilePath()
@@ -9626,12 +9764,21 @@ void MainWindow::hideCurrentResultPreview()
 
 void MainWindow::handleEditorEscapePressed()
 {
-    if (m_widgets.state->isVisible()) {
+    // Esc: cancel a history edit, else clear the expression (Edit > Clear
+    // Expression); with nothing to clear it just dismisses the tooltip. An open
+    // completion popup takes Esc first (Editor).
+    if (m_pendingHistoryEditIndex >= 0) {
+        cancelHistoryEntryEdit();
         hideStateLabel();
         return;
     }
-
-    cancelHistoryEntryEdit();
+    if (m_widgets.editor != nullptr && !m_widgets.editor->text().isEmpty()) {
+        clearEditorAndBitfield();
+        hideStateLabel();
+        return;
+    }
+    if (m_widgets.state->isVisible())
+        hideStateLabel();
 }
 
 void MainWindow::wrapSelection()
@@ -10275,6 +10422,15 @@ void MainWindow::setClassicAppearanceEnabled(bool b)
     emit classicAppearanceChanged();
 }
 
+void MainWindow::setHistorySpacing(QAction* action)
+{
+    if (!action)
+        return;
+    m_settings->historySpacing = static_cast<Settings::HistorySpacing>(action->data().toInt());
+    for (ResultDisplay* display : splitPaneDisplays())
+        display->applyHistorySpacing();
+}
+
 void MainWindow::reapplyClassicAppearanceToHistory()
 {
     // History entries cache their rendered display lines (with the operator
@@ -10727,13 +10883,38 @@ void MainWindow::showStateLabel(const QString& msg)
     }
     m_widgets.state->show();
     m_widgets.state->raise();
+    positionStateLabel();
+}
+
+void MainWindow::positionStateLabel()
+{
+    Editor* positionEditor = m_widgets.editor;
+    if (positionEditor == nullptr || positionEditor->window() != this)
+        positionEditor = globallyActiveEditor();
+    if (positionEditor == nullptr || m_widgets.state == nullptr)
+        return;
+
+    // Follow the editor: its geometry (and its pane's, inside the splitter) can
+    // settle after the label is shown, e.g. while the startup layout is restored.
+    if (m_stateLabelAnchorEditor != positionEditor) {
+        if (m_stateLabelAnchorEditor != nullptr) {
+            m_stateLabelAnchorEditor->removeEventFilter(m_stateLabelAnchorWatcher);
+            if (QWidget* pane = m_stateLabelAnchorEditor->parentWidget())
+                pane->removeEventFilter(m_stateLabelAnchorWatcher);
+        }
+        m_stateLabelAnchorEditor = positionEditor;
+        positionEditor->installEventFilter(m_stateLabelAnchorWatcher);
+        if (QWidget* pane = positionEditor->parentWidget())
+            pane->installEventFilter(m_stateLabelAnchorWatcher);
+    }
+
     const int height = m_widgets.state->height();
     QPoint pos = mapFromGlobal(
         positionEditor->mapToGlobal(QPoint(UiConfig::ResultTooltipStartMargin, -height)));
     // In classic mode the popup box sits flush at the window's left edge (x = 0),
     // like the old design; its internal padding is unchanged. Non-classic keeps
     // the 1.0 tooltip inset.
-    if (classicAppearance)
+    if (m_settings->classicAppearance)
         pos.setX(0);
     m_widgets.state->move(pos);
 }
@@ -11915,8 +12096,11 @@ void MainWindow::restoreSession(bool restoreHistory) {
     migrateLegacyHistoryIfNeeded();
     ensureSessionsPath();
 
-    if (restoreSessionLayout(restoreHistory))
+    if (restoreSessionLayout(restoreHistory)) {
+        m_startupPaneSetupPending = true;
         return;
+    }
+    m_startupPaneSetupPending = true;
 
     const QString name = m_session->name();
     const QString filePath = sessionFilePath(name);
@@ -11933,8 +12117,10 @@ void MainWindow::restoreSession(bool restoreHistory) {
         QMetaObject::invokeMethod(windowGuard.data(), [windowGuard, ok, json, name, restoreHistory]() mutable {
             if (!windowGuard)
                 return;
-            if (!ok)
+            if (!ok) {
+                windowGuard->finishStartupPaneSetup();
                 return;
+            }
 
             Session* loadedSession = new Session();
             loadedSession->deSerialize(json, false);
@@ -11960,6 +12146,7 @@ void MainWindow::restoreSession(bool restoreHistory) {
             emit window->unitsChanged();
             window->restoreEditorTextFromCurrentSession();
             window->m_conditions.autoAns = restoreHistory && !loadedSession->historyIsEmpty();
+            window->finishStartupPaneSetup();
         }, Qt::QueuedConnection);
     });
     {
@@ -12134,8 +12321,10 @@ void MainWindow::finishRestoreSessionLayout(const QJsonObject& layout,
     const QJsonArray windows = layout.value(QStringLiteral("windows")).toArray();
     const QString rootType = root.value(QStringLiteral("type")).toString();
 
-    if (sessionJsons.isEmpty())
+    if (sessionJsons.isEmpty()) {
+        finishStartupPaneSetup(); // nothing restored: the initial pane stays
         return;
+    }
 
     QHash<QString, Session*> restoredSessions;
     for (auto it = sessionJsons.constBegin(); it != sessionJsons.constEnd(); ++it) {
@@ -12365,8 +12554,9 @@ void MainWindow::finishRestoreSessionLayout(const QJsonObject& layout,
     m_session = nullptr;
     activateSession(activeSession);
     m_conditions.autoAns = restoreHistory && !m_session->historyIsEmpty();
-    updatePaneEditorCursorVisibility();
-    restoreWindowUiState(window);
+    // The window chrome (dock layout, keypad, status bar) was already restored
+    // before show (restoreSessionLayout); re-applying it here on the visible
+    // window churned the dock layout. The pane rebuild does not touch it.
     applyThemeSurfacePalette();
     refreshPaneThemes();
     emit historyChanged();
@@ -12377,6 +12567,9 @@ void MainWindow::finishRestoreSessionLayout(const QJsonObject& layout,
     QTimer::singleShot(0, this, [this]() {
         restoreVisibleSessionViewports();
     });
+    // The restored editors replaced the initial one, which owned the active-pane
+    // role; hand the role to the restored active pane.
+    finishStartupPaneSetup();
 
     if (this == primaryMainWindow() && !g_restoringExtraWindows && !g_multiWindowSpawnDone && windows.size() > 1) {
         g_multiWindowSpawnDone = true;
@@ -12486,7 +12679,9 @@ void MainWindow::showRestoredWindow(const QByteArray& geometry)
 
 void MainWindow::restoreWindowLayoutState(const QByteArray& state)
 {
-    restoreState(state, DockLayoutStateVersion);
+    // A restored layout places (and groups) every dock it knows.
+    if (restoreState(state, DockLayoutStateVersion))
+        m_docksAwaitingTabify.clear();
 }
 
 void MainWindow::restoreWindowKeypadLayout(bool visible, int modeValue)

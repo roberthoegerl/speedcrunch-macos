@@ -29,6 +29,8 @@
 #include <QClipboard>
 #include <QContextMenuEvent>
 #include <QCursor>
+#include <QFontInfo>
+#include <QFontMetricsF>
 #include <QFrame>
 #include <QHoverEvent>
 #include <QIcon>
@@ -41,19 +43,32 @@
 #include <QPixmap>
 #include <QPolygonF>
 #include <QLinearGradient>
+#include <QPlainTextDocumentLayout>
+#include <QScopedValueRollback>
 #include <QScrollBar>
 #include <QTextBlock>
 #include <QTextLayout>
+#include <QTimer>
 #include <QToolButton>
 
 #include <limits>
 
 namespace {
 constexpr int kResultDisplayHorizontalPadding = 14;
-constexpr int kResultDisplayFadeHeight = 28;
 // Classic (0.12) appearance: history text left edge should line up with the input
 // editor text (Editor::textLeftInset() == classic h-padding 4 + doc margin 2 == 6).
 constexpr int kResultDisplayClassicLeftInset = 6;
+
+// Separators (empty blocks) get a constant 1 px font so their own line never
+// reaches into the next entry; their height comes from HistoryDocumentLayout.
+QTextCharFormat separatorCharFormat()
+{
+    QFont font;
+    font.setPixelSize(1);
+    QTextCharFormat format;
+    format.setFont(font, QTextCharFormat::FontPropertiesSpecifiedOnly);
+    return format;
+}
 
 struct ResultDisplayScrollBarColors
 {
@@ -427,6 +442,53 @@ const Session* displaySession(const ResultDisplay* display)
 
 }
 
+// QPlainTextDocumentLayout ignores QTextBlockFormat margins and line height
+// (QTBUG-51891), so the gap between history entries is set here instead: every
+// empty (separator) block is as tall as a fraction of the line height, and the
+// trailing separator above the input gets half of that. Changing the fraction or
+// the font needs no document edits, so it costs the same for any history length.
+class HistoryDocumentLayout : public QPlainTextDocumentLayout
+{
+public:
+    using QPlainTextDocumentLayout::QPlainTextDocumentLayout;
+
+    void setGapFraction(qreal fraction)
+    {
+        if (qFuzzyCompare(fraction, m_gapFraction))
+            return;
+        m_gapFraction = fraction;
+        emit documentSizeChanged(documentSize()); // QPlainTextEdit recomputes its scroll range
+        emit update();
+    }
+
+    QRectF blockBoundingRect(const QTextBlock& block) const override
+    {
+        QRectF rect = QPlainTextDocumentLayout::blockBoundingRect(block);
+        if (rect.isNull() || block.length() != 1)
+            return rect;
+        const bool trailing = !block.next().isValid();
+        const qreal bottomMargin = trailing ? document()->documentMargin() : 0;
+        rect.setHeight(gapPixels(trailing) + bottomMargin);
+        return rect;
+    }
+
+private:
+    int gapPixels(bool trailing) const
+    {
+        const QFont font = document()->defaultFont(); // follows zoom
+        if (m_lineHeight <= 0 || font != m_metricsFont) {
+            const QFontMetricsF metrics(font);
+            m_lineHeight = qCeil(metrics.ascent() + metrics.descent() + qMax(0.0, metrics.leading()));
+            m_metricsFont = font;
+        }
+        return qMax(1, qRound(m_lineHeight * m_gapFraction * (trailing ? 0.5 : 1.0)));
+    }
+
+    qreal m_gapFraction = 0.5;
+    mutable QFont m_metricsFont;
+    mutable int m_lineHeight = 0;
+};
+
 ResultDisplay::ResultDisplay(QWidget* parent)
     : QPlainTextEdit(parent)
     , m_highlighter(new SyntaxHighlighter(this))
@@ -459,7 +521,22 @@ ResultDisplay::ResultDisplay(QWidget* parent)
     , m_scrollToBottomButtonHovered(false)
     , m_scrollToBottomButton(new QToolButton(this))
 {
-    setViewportMargins(kResultDisplayHorizontalPadding, 0, kResultDisplayHorizontalPadding, 0);
+    QTextDocument* historyDocument = new QTextDocument(this);
+    m_historyLayout = new HistoryDocumentLayout(historyDocument);
+    historyDocument->setDocumentLayout(m_historyLayout);
+    historyDocument->setUndoRedoEnabled(false); // read-only history: no undo stack growth
+    setDocument(historyDocument);
+    m_highlighter->setDocument(historyDocument);
+    applyHistorySpacing();
+
+    for (QWidget** line : { &m_topEdgeLine, &m_bottomEdgeLine }) {
+        *line = new QWidget(this);
+        (*line)->setAttribute(Qt::WA_TransparentForMouseEvents);
+        (*line)->setAutoFillBackground(true);
+        (*line)->hide();
+    }
+
+    updateViewportMargins();
     setBackgroundRole(QPalette::Base);
     setLayoutDirection(Qt::LeftToRight);
     setMinimumWidth(150);
@@ -621,7 +698,7 @@ void ResultDisplay::append(const QString& expression, Quantity& value,
     ++m_count;
     const Evaluator* evaluator = m_session ? m_session->evaluator() : nullptr;
 
-    appendPlainText(formattedExpressionForDisplay(expression, interpretedExpression, evaluator));
+    appendLine(formattedExpressionForDisplay(expression, interpretedExpression, evaluator));
     if (!value.isNan()) {
         const Settings* settings = Settings::instance();
         EvaluationContext ctx;
@@ -639,14 +716,14 @@ void ResultDisplay::append(const QString& expression, Quantity& value,
         const QStringList renderedLines = QStringList({ formattedExpressionForDisplay(entry, evaluator) }) + resultLines;
         for (int i = 0; i < resultLines.size(); ++i) {
             const QString& line = resultLines.at(i);
-            appendPlainText(line);
+            appendLine(line);
             if (isSimplifiedExpressionRenderLine(renderedLines, i + 1, simplifiedLine))
                 markSimplifiedExpressionBlock(document()->lastBlock().blockNumber());
         }
     }
-    appendPlainText(QLatin1String(""));
+    appendLine(QLatin1String(""));
     markHistoryBlockIndexCacheDirty();
-    applyClassicSeparatorSpacing();
+    alignContentToBottom();
 }
 
 int ResultDisplay::count() const
@@ -726,11 +803,7 @@ void ResultDisplay::rehighlight()
     // Classic mode: reduce the left inset so history text is flush-left with the
     // input editor text; keep the right inset for scrollbar spacing. Non-classic
     // keeps the original symmetric padding.
-    const int docMargin = qRound(document()->documentMargin());
-    const int leftPadding = Settings::instance()->classicAppearance
-        ? qMax(0, kResultDisplayClassicLeftInset - docMargin)
-        : kResultDisplayHorizontalPadding;
-    setViewportMargins(leftPadding, 0, kResultDisplayHorizontalPadding, 0);
+    updateViewportMargins();
 
     updateSurfaceStyleSheet();
     updateScrollBarStyleSheet();
@@ -742,6 +815,7 @@ void ResultDisplay::setThemeSurfaceColor(const QColor& color)
     updateSurfaceStyleSheet();
     updateScrollToBottomButtonStyle();
     updateScrollBarStyleSheet();
+    updateScrollEdgeLines();
 }
 
 void ResultDisplay::setThemeToolTipColors(const QColor& background,
@@ -1003,28 +1077,122 @@ void ResultDisplay::reRenderAll()
 void ResultDisplay::refresh()
 {
     refreshDocument();
-    applyClassicSeparatorSpacing();
+    alignContentToBottom();
 }
 
-void ResultDisplay::applyClassicSeparatorSpacing()
+void ResultDisplay::applyHistorySpacing()
 {
-    if (!Settings::instance()->classicAppearance)
-        return;
-    // Compact the blank separator paragraphs in classic mode: 56% line height
-    // between history entries and 26% for the trailing separator just above the
-    // input editor (21% now). Non-classic never enters here, and a later
-    // non-classic rebuild recreates the blocks with default (full) spacing.
-    const int lastBlockNumber = document()->lastBlock().blockNumber();
+    static const qreal kGapFraction[] = { 0.25, 0.5, 1.0 }; // Small, Medium, Large
+    const int spacing = qBound(0, int(Settings::instance()->historySpacing), 2);
+    QScrollBar* bar = verticalScrollBar();
+    const bool atBottom = bar->value() >= bar->maximum();
+    m_historyLayout->setGapFraction(kGapFraction[spacing]);
+    if (atBottom)
+        bar->setValue(bar->maximum());
+    alignContentToBottom();
+}
+
+void ResultDisplay::appendLine(const QString& text)
+{
+    // Like appendPlainText(), but through a private cursor with explicit formats:
+    // appendPlainText() takes the widget cursor's format, which after a click into
+    // a gap is the 1 px separator font, so the next entry would come out tiny.
+    QScrollBar* bar = verticalScrollBar();
+    const bool atBottom = bar->value() >= bar->maximum();
+    const QTextCharFormat format = text.isEmpty() ? separatorCharFormat() : QTextCharFormat();
     QTextCursor cursor(document());
-    for (QTextBlock block = document()->firstBlock(); block.isValid(); block = block.next()) {
-        if (!block.text().isEmpty())
-            continue;
-        QTextBlockFormat fmt = block.blockFormat();
-        const qreal percent = (block.blockNumber() == lastBlockNumber) ? 21.0 : 56.0;
-        fmt.setLineHeight(percent, QTextBlockFormat::ProportionalHeight);
-        cursor.setPosition(block.position());
-        cursor.mergeBlockFormat(fmt);
+    cursor.movePosition(QTextCursor::End);
+    if (document()->isEmpty())
+        cursor.setBlockCharFormat(format);
+    else
+        cursor.insertBlock(QTextBlockFormat(), format);
+    if (!text.isEmpty())
+        cursor.insertText(text, format);
+    if (atBottom)
+        bar->setValue(bar->maximum());
+}
+
+void ResultDisplay::updateViewportMargins()
+{
+    // Classic mode: reduce the left inset so history text is flush-left with the
+    // input editor text; keep the right inset for scrollbar spacing. Non-classic
+    // keeps the original symmetric padding. Top and bottom margins come from
+    // alignContentToBottom().
+    const int docMargin = qRound(document()->documentMargin());
+    const int leftPadding = Settings::instance()->classicAppearance
+        ? qMax(0, kResultDisplayClassicLeftInset - docMargin)
+        : kResultDisplayHorizontalPadding;
+    setViewportMargins(leftPadding, m_bottomAlignTop, kResultDisplayHorizontalPadding, m_bottomReserve);
+}
+
+int ResultDisplay::inputTooltipReserve() const
+{
+    // Height of the input's status tooltip (MainWindow::showStateLabel), which pops
+    // up directly above the input: the newest result keeps clear of it.
+    const bool classic = Settings::instance()->classicAppearance;
+    const QFont tooltipFont = classic ? QApplication::font() : font();
+    const int padding = classic ? 2 : 6;
+    const int border = classic ? 2 : 2 * UiConfig::PopupOutlineStrokeWidth;
+    return QFontMetrics(tooltipFont).height() + padding + border;
+}
+
+void ResultDisplay::alignContentToBottom()
+{
+    // QPlainTextEdit scrolls in whole lines with the top line flush, so at the
+    // bottom a variable remainder (up to a line) would sit between the newest entry
+    // and the input. Instead the viewport is extended upwards by that remainder (a
+    // negative top margin): the remainder goes above the visible area, the top line
+    // is cut there, and the newest result always sits at the same distance above
+    // the input: room for the input tooltip plus the trailing separator gap.
+    if (m_aligningBottom)
+        return;
+    QScopedValueRollback<bool> guard(m_aligningBottom, true);
+    QScrollBar* bar = verticalScrollBar();
+    const int margin = qRound(document()->documentMargin());
+    // Below the content Qt keeps documentMargin (inside the last block) + margin + 1.
+    const int reserve = qMax(0, inputTooltipReserve() - (2 * margin + 1));
+    const bool wasAtBottom = bar->value() >= bar->maximum();
+    if (reserve != m_bottomReserve) {
+        m_bottomReserve = reserve;
+        updateViewportMargins();
     }
+    if (!wasAtBottom) {
+        updateScrollEdgeLines();
+        return; // scrolled up: leave the view alone
+    }
+
+    // Qt's rule: from the bottom, the top line is the highest one from which all
+    // remaining lines fit into (viewport height - margin - 1). Find the smallest
+    // such run that fills the visible height, then make the viewport exactly that
+    // tall, hiding the excess above the widget.
+    const int visibleHeight = contentsRect().height() - m_bottomReserve;
+    const int target = visibleHeight - margin - 1;
+    int run = 0;
+    bool filled = false;
+    for (QTextBlock block = document()->lastBlock(); block.isValid() && !filled; block = block.previous()) {
+        const int blockHeight = qCeil(blockBoundingRect(block).height());
+        const QTextLayout* layout = block.layout();
+        const int lineCount = layout != nullptr ? layout->lineCount() : 0;
+        if (block.length() == 1 || lineCount <= 1) {
+            run += blockHeight;
+            filled = run >= target;
+            continue;
+        }
+        int lineBottom = blockHeight;
+        for (int i = lineCount - 1; i >= 0 && !filled; --i) {
+            const int lineTop = qFloor(layout->lineAt(i).y());
+            run += lineBottom - lineTop;
+            lineBottom = lineTop;
+            filled = run >= target;
+        }
+    }
+    const int top = filled ? -(run - target) : 0;
+    if (top != m_bottomAlignTop) {
+        m_bottomAlignTop = top;
+        updateViewportMargins();
+    }
+    bar->setValue(bar->maximum());
+    updateScrollEdgeLines();
 }
 
 void ResultDisplay::refreshDocument()
@@ -1045,11 +1213,11 @@ void ResultDisplay::refreshDocument()
         const QString simplifiedLine = simplifiedExpressionLineForDisplay(lastEntry, evaluator);
         for (int i = 0; i < renderedLines.size(); ++i) {
             const QString& line = renderedLines.at(i);
-            appendPlainText(line);
+            appendLine(line);
             if (isSimplifiedExpressionRenderLine(renderedLines, i, simplifiedLine))
                 markSimplifiedExpressionBlock(document()->lastBlock().blockNumber());
         }
-        appendPlainText(QLatin1String(""));
+        appendLine(QLatin1String(""));
     };
 
     // Fast path for the common "new evaluation added one history entry" case.
@@ -1191,11 +1359,12 @@ void ResultDisplay::refreshLastHistoryEntry()
     cursor.setPosition(startBlock.position());
     cursor.movePosition(QTextCursor::End, QTextCursor::KeepAnchor);
     cursor.insertText(updatedLines.join(QLatin1String("\n")));
+    QTextCursor(document()->lastBlock()).setBlockCharFormat(separatorCharFormat());
     markSimplifiedExpressionBlocks();
     markHistoryBlockIndexCacheDirty();
     updateHoverHighlightSelection();
     updateScrollToBottomButtonVisibility();
-    applyClassicSeparatorSpacing();
+    alignContentToBottom();
 }
 
 void ResultDisplay::scrollLines(int numberOfLines)
@@ -1268,6 +1437,14 @@ void ResultDisplay::scrollToBottom()
 
     m_isScrollingPageOnly = false;
     scrollToDirection(1);
+}
+
+void ResultDisplay::changeEvent(QEvent* event)
+{
+    QPlainTextEdit::changeEvent(event);
+    // Separator heights follow the font (HistoryDocumentLayout); re-align the bottom.
+    if (event->type() == QEvent::FontChange)
+        alignContentToBottom();
 }
 
 void ResultDisplay::increaseFontPointSize()
@@ -1712,7 +1889,6 @@ void ResultDisplay::paintEvent(QPaintEvent* event)
     QPlainTextEdit::paintEvent(event);
 
     QPainter painter(viewport());
-    drawScrollEdgeGradients(&painter);
 
     if (m_editingHistoryIndex >= 0) {
         const QRect cancelRect = cancelGlyphBadgeRectForEditingIndex();
@@ -1807,12 +1983,18 @@ void ResultDisplay::resizeEvent(QResizeEvent* event)
 {
     QPlainTextEdit::resizeEvent(event);
     repositionScrollToBottomButton();
+    alignContentToBottom();
+    updateScrollEdgeLines();
 }
 
 void ResultDisplay::scrollContentsBy(int dx, int dy)
 {
     QPlainTextEdit::scrollContentsBy(dx, dy);
     updateScrollToBottomButtonVisibility();
+    updateScrollEdgeLines();
+    // Scrolled back down to the end: re-align once the scroll has settled.
+    if (!m_aligningBottom && verticalScrollBar()->value() == verticalScrollBar()->maximum())
+        QTimer::singleShot(0, this, &ResultDisplay::alignContentToBottom);
     // Text moved under a resting mouse: re-evaluate text vs. blank space.
     if (viewport()->underMouse())
         updateViewportCursorAtMouse();
@@ -1827,56 +2009,33 @@ void ResultDisplay::stopActiveScrollingAnimation()
     updateScrollToBottomButtonVisibility();
 }
 
-int ResultDisplay::scrollEdgeFadeHeightForCurrentFont() const
+void ResultDisplay::updateScrollEdgeLines()
 {
-    const int defaultLineHeight = QFontMetrics(QApplication::font()).height();
-    const int currentLineHeight = fontMetrics().height();
-    if (defaultLineHeight <= 0 || currentLineHeight <= 0)
-        return kResultDisplayFadeHeight;
-
-    const qreal scale = static_cast<qreal>(currentLineHeight) / static_cast<qreal>(defaultLineHeight);
-    return qMax(1, qRound(kResultDisplayFadeHeight * scale));
-}
-
-void ResultDisplay::drawScrollEdgeGradients(QPainter* painter)
-{
-    if (painter == nullptr)
+    // A full-width 1 px rule at an edge only while content continues past it (the
+    // macOS scroll-edge cue); unlike a fade it costs no space and dims no text.
+    // Child widgets rather than viewport painting, so the rule spans the padding
+    // and scroll bar too.
+    if (m_topEdgeLine == nullptr || m_bottomEdgeLine == nullptr)
         return;
-
     QScrollBar* bar = verticalScrollBar();
-    if (bar == nullptr || bar->maximum() <= bar->minimum())
-        return;
-
-    const QRect rect = viewport()->rect();
-    const int fadeHeight = qMin(scrollEdgeFadeHeightForCurrentFont(), rect.height() / 2);
-    if (fadeHeight <= 0)
-        return;
-
-    QColor solid = themeSurfaceBackground();
-    QColor transparent = solid;
-    solid.setAlpha(255);
-    transparent.setAlpha(0);
-
-    painter->save();
-    painter->setPen(Qt::NoPen);
-
-    if (bar->value() > bar->minimum()) {
-        const QRect topRect(rect.left(), rect.top(), rect.width(), fadeHeight);
-        QLinearGradient topGradient(topRect.topLeft(), topRect.bottomLeft());
-        topGradient.setColorAt(0.0, solid);
-        topGradient.setColorAt(1.0, transparent);
-        painter->fillRect(topRect, topGradient);
+    const bool scrollable = bar->maximum() > bar->minimum();
+    QColor lineColor = aaForegroundForBackground(themeSurfaceBackground());
+    lineColor.setAlpha(48);
+    const QRect area = contentsRect();
+    const QRect viewportRect = viewport()->geometry();
+    const QPair<QWidget*, int> lines[] = {
+        { m_topEdgeLine, qMax(area.top(), viewportRect.top()) },
+        { m_bottomEdgeLine, qMin(area.bottom(), viewportRect.bottom()) },
+    };
+    for (const auto& line : lines) {
+        QPalette palette = line.first->palette();
+        palette.setColor(QPalette::Window, lineColor);
+        line.first->setPalette(palette);
+        line.first->setGeometry(area.left(), line.second, area.width(), 1);
+        line.first->raise();
     }
-
-    if (bar->value() < bar->maximum()) {
-        const QRect bottomRect(rect.left(), rect.bottom() - fadeHeight + 1, rect.width(), fadeHeight);
-        QLinearGradient bottomGradient(bottomRect.topLeft(), bottomRect.bottomLeft());
-        bottomGradient.setColorAt(0.0, transparent);
-        bottomGradient.setColorAt(1.0, solid);
-        painter->fillRect(bottomRect, bottomGradient);
-    }
-
-    painter->restore();
+    m_topEdgeLine->setVisible(scrollable && bar->value() > bar->minimum());
+    m_bottomEdgeLine->setVisible(scrollable && bar->value() < bar->maximum());
 }
 
 void ResultDisplay::repositionScrollToBottomButton()

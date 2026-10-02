@@ -11,6 +11,7 @@
 #include <QPair>
 #include <QVector>
 
+class HistoryDocumentLayout;
 class Quantity;
 class SyntaxHighlighter;
 class HistoryEntry;
@@ -42,6 +43,7 @@ public:
     bool isEmpty() const { return m_count==0; }
     QString exportHtml() const;
     void setHoverHighlightEnabled(bool enabled);
+    void applyHistorySpacing();
     void setEditingHistoryIndex(int index);
     void setLoadedSessionCount(int count);
     void setCloseSessionEnabled(bool enabled);
@@ -114,6 +116,7 @@ public slots:
     void scrollToTop();
 
 protected:
+    virtual void changeEvent(QEvent*);
     virtual void contextMenuEvent(QContextMenuEvent*);
     virtual bool eventFilter(QObject* watched, QEvent* event);
     virtual void leaveEvent(QEvent*);
@@ -131,9 +134,9 @@ protected:
     void pageScrollEvent();
     void scrollToDirection(int);
     void stopActiveScrollingAnimation();
-    int scrollEdgeFadeHeightForCurrentFont() const;
     QMenu* createContextMenu(const QPoint& pos);
-    void drawScrollEdgeGradients(QPainter* painter);
+    void updateScrollEdgeLines();
+    int inputTooltipReserve() const;
     void repositionScrollToBottomButton();
     void updateScrollToBottomButtonVisibility();
     void updateSurfaceStyleSheet();
@@ -160,7 +163,9 @@ protected:
     void markSimplifiedExpressionBlocks();
     void ensureHistoryBlockIndexCache() const;
     void refreshDocument();
-    void applyClassicSeparatorSpacing();
+    void appendLine(const QString& text);
+    void alignContentToBottom();
+    void updateViewportMargins();
 
 private:
     Q_DISABLE_COPY(ResultDisplay)
@@ -223,6 +228,12 @@ private:
     HoveredActionBadge m_hoveredActionBadge;
     bool m_scrollToBottomButtonHovered;
     bool m_mouseSelecting = false;
+    HistoryDocumentLayout* m_historyLayout = nullptr;
+    int m_bottomAlignTop = 0;
+    int m_bottomReserve = 0;
+    QWidget* m_topEdgeLine = nullptr;
+    QWidget* m_bottomEdgeLine = nullptr;
+    bool m_aligningBottom = false;
     QToolButton* m_scrollToBottomButton;
 };
 

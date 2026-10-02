@@ -216,6 +216,7 @@ private slots:
     void setStatusBarVisible(bool);
     void setSyntaxHighlightingEnabled(bool);
     void setClassicAppearanceEnabled(bool);
+    void setHistorySpacing(QAction*);
     void reapplyClassicAppearanceToHistory();
     void setDigitGrouping(QAction*);
     void setDigitGroupingIntegerPartOnlyEnabled(bool);
@@ -229,6 +230,8 @@ private slots:
     void setWidgetsDirection();
     void showAboutDialog();
     void showStateLabel(const QString&);
+    void positionStateLabel();
+    void finishStartupPaneSetup();
     void showFontDialog();
     void showLanguageChooserDialog();
     void showManualWindow();
@@ -262,6 +265,7 @@ private:
     void clearTextEditSelection(QPlainTextEdit*);
     void hideCurrentResultPreview();
     void addTabifiedDock(QDockWidget*, bool takeFocus, Qt::DockWidgetArea = Qt::RightDockWidgetArea);
+    void showDock(QDockWidget*);
     void deleteDock(QDockWidget*);
     void createUi();
     void createActions();
@@ -494,6 +498,9 @@ private:
         QAction* settingsBehaviorLeaveLastExpression;
         QAction* settingsBehaviorNumberFormat;
         QAction* settingsBehaviorResultSlots;
+        QAction* settingsDisplayHistorySpacingSmall;
+        QAction* settingsDisplayHistorySpacingMedium;
+        QAction* settingsDisplayHistorySpacingLarge;
         QAction* settingsBehaviorUpDownArrowNever;
         QAction* settingsBehaviorUpDownArrowAlways;
         QAction* settingsBehaviorUpDownArrowSingleLineOnly;
@@ -535,6 +542,7 @@ private:
         QActionGroup* radixChar;
         QActionGroup* digitGrouping;
         QActionGroup* upDownArrowBehavior;
+        QActionGroup* historySpacing;
         QActionGroup* keypad;
         QActionGroup* keypadZoom;
         QActionGroup* unitNegativeExponentStyle;
@@ -561,6 +569,7 @@ private:
         QMenu* precision;
         QMenu* radixChar;
         QMenu* upDownArrowBehavior;
+        QMenu* historySpacing;
         QMenu* session;
         QMenu* sessionExport;
         QMenu* settings;
@@ -661,6 +670,18 @@ private:
     bool m_bulkFunctionsChanged;
     bool m_bulkUnitsChanged;
     bool m_currentResultPreviewDismissed = false;
+    // Startup: true while the session restore (async) still has to finalize the
+    // panes; finishStartupPaneSetup() then runs once they are final.
+    bool m_startupPaneSetupPending = false;
+    // True while applySettings() creates all docks: closed ones are never shown.
+    bool m_bootstrappingDocks = false;
+    // Docks added during that bootstrap, not yet tabified: they are grouped with
+    // the open docks of their area when first shown, unless a restored dock
+    // layout (restoreState) already arranged them.
+    QList<QDockWidget*> m_docksAwaitingTabify;
+    // Keeps the state label anchored above the editor it belongs to.
+    QObject* m_stateLabelAnchorWatcher = nullptr;
+    QPointer<QWidget> m_stateLabelAnchorEditor;
     QString m_lastCurrentResultPreviewMessage;
 };
 

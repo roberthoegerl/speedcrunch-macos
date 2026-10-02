@@ -48,6 +48,8 @@ public:
     static Editor* completionMouseSelectionOwner();
     void clearHistory();
     QColor cursorColor() const { return m_themePrimaryColor; }
+    // True while this editor draws its (blinking) themed caret: the active pane's input.
+    bool themedCursorEnabled() const { return shouldPaintThemedCursor(); }
     int cursorPosition() const;
     void dismissCurrentAutoCalc();
     void doBackspace();
