@@ -6,6 +6,7 @@
 #define GUI_TOOLTIPSTYLEUTILS_H
 
 #include <QColor>
+#include <QFont>
 #include <QMargins>
 #include <QPoint>
 #include <QString>
@@ -37,6 +38,9 @@ struct TreePopupTheme {
     int cornerRadius = 0;
 };
 
+// The display font (family and typeface, as chosen in the font dialog) at the
+// UI font's size: for compact tooltips that belong to the calculator text.
+QFont compactToolTipFont(const QFont& displayFont);
 void applyRoundedPopupMask(QWidget* popup, int cornerRadius);
 void applyPopupTheme(QFrame* popup,
                      QLabel* label,

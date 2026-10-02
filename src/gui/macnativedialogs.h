@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2026 SpeedCrunch developers
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-#ifndef GUI_MACALERTPLACEMENT_H
-#define GUI_MACALERTPLACEMENT_H
+#ifndef GUI_MACNATIVEDIALOGS_H
+#define GUI_MACNATIVEDIALOGS_H
 
 #include <QtGlobal>
 

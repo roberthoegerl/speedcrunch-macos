@@ -9,6 +9,7 @@
 #include "gui/oklchutils.h"
 #include "gui/resultlineformatutils.h"
 #include "gui/syntaxhighlighter.h"
+#include "gui/textmetrics.h"
 #include "gui/tooltipstyleutils.h"
 #include "gui/uiconfig.h"
 #include "core/constants.h"
@@ -1493,7 +1494,8 @@ QSize Editor::sizeHint() const
     ensurePolished();
     const QFontMetrics metrics = fontMetrics();
     const int width = metrics.horizontalAdvance('x') * 10;
-    const int height = metrics.lineSpacing() + editorVerticalDecorationHeight();
+    const int height = metrics.lineSpacing() + editorVerticalDecorationHeight()
+        + TextMetrics::opticalTopInset(font());
     return QSize(width, height);
 }
 
@@ -3893,7 +3895,12 @@ void Editor::updateHeightForWrappedText()
 
     const int clampedLines = std::max(1, std::min(5, visualLineCount));
     m_canScrollWrappedText = visualLineCount > clampedLines;
-    setFixedHeight(lineHeight * clampedLines + editorVerticalDecorationHeight());
+    // Fonts with little room above their capitals get the difference as a top
+    // viewport margin, so the input text looks vertically centred in its field.
+    const int topInset = TextMetrics::opticalTopInset(font());
+    if (viewportMargins().top() != topInset)
+        setViewportMargins(0, topInset, 0, 0);
+    setFixedHeight(lineHeight * clampedLines + editorVerticalDecorationHeight() + topInset);
     if (!m_canScrollWrappedText)
         verticalScrollBar()->setValue(verticalScrollBar()->minimum());
 }

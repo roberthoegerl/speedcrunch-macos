@@ -40,10 +40,12 @@ gui/genericdock.h
 gui/keypad.h
 gui/mainwindow.h
 gui/manualwindow.h
+gui/displayfontdialog.h
 gui/numberformatdialog.h
     gui/notationandprecisiondialog.h
 gui/oklchutils.h
 gui/resultdisplay.h
+gui/textmetrics.h
 gui/tooltipstyleutils.h
 gui/variablelistwidget.h
 gui/userfunctionlistwidget.h
@@ -114,6 +116,7 @@ gui/genericdock.h
 gui/keypad.cpp
 gui/mainwindow.cpp
 gui/manualwindow.cpp
+gui/displayfontdialog.cpp
 gui/numberformatdialog.cpp
 gui/notationandprecisiondialog.cpp
 gui/oklchutils.cpp
@@ -450,6 +453,7 @@ gui/keypad.cpp
 gui/dockcomboboxchevron.cpp
 gui/mainwindow.cpp
 gui/manualwindow.cpp
+gui/displayfontdialog.cpp
 gui/numberformatdialog.cpp
 gui/notationandprecisiondialog.cpp
 gui/oklchutils.cpp

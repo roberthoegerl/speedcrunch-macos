@@ -3,7 +3,8 @@
 
 
 #include "gui/mainwindow.h"
-#include "gui/macalertplacement.h"
+#include "gui/displayfontdialog.h"
+#include "gui/macnativedialogs.h"
 
 #include "core/complexform.h"
 #include "core/constants.h"
@@ -45,6 +46,7 @@
 #include "gui/resultlineformatutils.h"
 #include "gui/syntaxhighlighter.h"
 #include "gui/themedlineedit.h"
+#include "gui/textmetrics.h"
 #include "gui/tooltipstyleutils.h"
 #include "gui/uiconfig.h"
 #include "math/cmath.h"
@@ -84,7 +86,6 @@
 #include <QFileInfo>
 #include <QFormLayout>
 #include <QFont>
-#include <QFontDialog>
 #include <QFrame>
 #include <QGridLayout>
 #include <QGroupBox>
@@ -7736,10 +7737,7 @@ void MainWindow::applySettings()
 
     QFont font;
     font.fromString(m_settings->displayFont);
-    for (ResultDisplay* display : splitPaneDisplays())
-        display->setFont(font);
-    for (Editor* editor : splitPaneEditors())
-        editor->setFont(font);
+    applyDisplayFont(font);
 
     if (m_widgets.display != nullptr)
         m_widgets.display->verticalScrollBar()->setValue(m_widgets.display->verticalScrollBar()->maximum());
@@ -10622,13 +10620,19 @@ void MainWindow::setWidgetsDirection()
 
 void MainWindow::showFontDialog()
 {
-    bool ok;
-    QFont f = QFontDialog::getFont(&ok, m_widgets.display->font(), this, tr("Display font"));
-    if (!ok)
-        return;
-    m_widgets.display->setFont(f);
-    m_widgets.editor->setFont(f);
-    if (m_widgets.state->isVisible())
+    DisplayFontDialog dialog(m_widgets.display->font(), this);
+    if (dialog.exec() == QDialog::Accepted)
+        applyDisplayFont(dialog.selectedFont());
+}
+
+void MainWindow::applyDisplayFont(const QFont& font)
+{
+    // The display font is shared by every pane's display and editor.
+    for (ResultDisplay* display : splitPaneDisplays())
+        display->setFont(font);
+    for (Editor* editor : splitPaneEditors())
+        editor->setFont(font);
+    if (m_widgets.state != nullptr && !m_widgets.state->isHidden())
         showStateLabel(m_widgets.state->text());
 }
 
@@ -10856,9 +10860,14 @@ void MainWindow::showStateLabel(const QString& msg)
     if (positionEditor == nullptr || positionEditor->window() != this)
         positionEditor = globallyActiveEditor();
 
-    // In classic mode the state label uses the normal (small) UI font rather than
-    // the large calculator display font, so the preview/error line stays compact.
-    const QFont stateFont = classicAppearance ? QApplication::font() : positionEditor->font();
+    // In classic mode the state label uses the display font at the normal (small) UI
+    // size rather than the large display size, so the preview/error line stays compact.
+    const QFont stateFont = classicAppearance
+        ? ToolTipStyleUtils::compactToolTipFont(positionEditor->font())
+        : positionEditor->font();
+    // Padding is symmetric around the font's ascent and descent; fonts with little
+    // room above their capitals get the difference on top to look centred.
+    const int topInset = TextMetrics::opticalTopInset(stateFont);
     const int closeButtonSize = qMax(14, QFontMetrics(stateFont).height() - 2);
     const int closeButtonRightPadding = 2;
     const int closeButtonTopPadding = 1;
@@ -10866,9 +10875,9 @@ void MainWindow::showStateLabel(const QString& msg)
     if (classicAppearance) {
         // No close button in classic mode: hug the text with small symmetric padding.
         m_widgets.stateCloseButton->hide();
-        m_widgets.state->setContentsMargins(4, 1, 4, 1);
+        m_widgets.state->setContentsMargins(4, 1 + topInset, 4, 1);
     } else {
-        m_widgets.state->setContentsMargins(6, 3, closeButtonReservedWidth, 3);
+        m_widgets.state->setContentsMargins(6, 3 + topInset, closeButtonReservedWidth, 3);
     }
     m_widgets.state->setFont(stateFont);
     m_widgets.state->setText(msg);

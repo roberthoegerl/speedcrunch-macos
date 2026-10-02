@@ -19,6 +19,13 @@
 
 namespace ToolTipStyleUtils {
 
+QFont compactToolTipFont(const QFont& displayFont)
+{
+    QFont font = displayFont;
+    font.setPointSizeF(QGuiApplication::font().pointSizeF());
+    return font;
+}
+
 void applyRoundedPopupMask(QWidget* popup, int cornerRadius)
 {
     if (popup == nullptr)

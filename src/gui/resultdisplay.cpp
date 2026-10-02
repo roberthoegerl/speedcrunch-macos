@@ -16,6 +16,7 @@
 #include "core/mathdsl.h"
 #include "gui/simplifiedexpressionutils.h"
 #include "gui/syntaxhighlighter.h"
+#include "gui/textmetrics.h"
 #include "gui/tooltipstyleutils.h"
 #include "gui/uiconfig.h"
 #include "math/cmath.h"
@@ -1130,10 +1131,11 @@ int ResultDisplay::inputTooltipReserve() const
     // Height of the input's status tooltip (MainWindow::showStateLabel), which pops
     // up directly above the input: the newest result keeps clear of it.
     const bool classic = Settings::instance()->classicAppearance;
-    const QFont tooltipFont = classic ? QApplication::font() : font();
+    const QFont tooltipFont = classic ? ToolTipStyleUtils::compactToolTipFont(font()) : font();
     const int padding = classic ? 2 : 6;
     const int border = classic ? 2 : 2 * UiConfig::PopupOutlineStrokeWidth;
-    return QFontMetrics(tooltipFont).height() + padding + border;
+    return QFontMetrics(tooltipFont).height() + TextMetrics::opticalTopInset(tooltipFont)
+        + padding + border;
 }
 
 void ResultDisplay::alignContentToBottom()

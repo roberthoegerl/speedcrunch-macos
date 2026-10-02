@@ -231,6 +231,7 @@ private slots:
     void showAboutDialog();
     void showStateLabel(const QString&);
     void positionStateLabel();
+    void applyDisplayFont(const QFont& font);
     void finishStartupPaneSetup();
     void showFontDialog();
     void showLanguageChooserDialog();

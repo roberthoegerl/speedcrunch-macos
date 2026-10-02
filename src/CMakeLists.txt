@@ -75,11 +75,11 @@ ADD_DEFINITIONS(-DQT_USE_QSTRINGBUILDER)
 
 include(SourceFiles.cmake)
 if(APPLE)
-    # Native alert placement (Objective-C++); used by MainWindow.
+    # Native macOS dialog helpers (Objective-C++); used by MainWindow.
     enable_language(OBJCXX)
-    list(APPEND speedcrunch_SOURCES gui/macalertplacement.mm)
-    list(APPEND testdisplayui_SOURCES gui/macalertplacement.mm)
-    set_source_files_properties(gui/macalertplacement.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
+    list(APPEND speedcrunch_SOURCES gui/macnativedialogs.mm)
+    list(APPEND testdisplayui_SOURCES gui/macnativedialogs.mm)
+    set_source_files_properties(gui/macnativedialogs.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
 endif()
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
