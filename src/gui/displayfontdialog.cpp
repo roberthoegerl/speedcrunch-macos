@@ -237,6 +237,11 @@ DisplayFontDialog::DisplayFontDialog(const QFont& current, QWidget* parent)
     , m_sizes(new QListWidget(this))
 {
     setWindowTitle(tr("Display Font"));
+    m_search->setObjectName(QStringLiteral("fontSearch"));
+    m_families->setObjectName(QStringLiteral("fontFamilies"));
+    m_typefaces->setObjectName(QStringLiteral("fontTypefaces"));
+    m_sizeEdit->setObjectName(QStringLiteral("fontSize"));
+    m_sizes->setObjectName(QStringLiteral("fontSizes"));
 
     m_search->setPlaceholderText(tr("Search"));
     m_search->setClearButtonEnabled(true);

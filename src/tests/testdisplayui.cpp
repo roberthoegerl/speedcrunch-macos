@@ -8,6 +8,7 @@
 #include "core/settings.h"
 #include "gui/bitfieldwidget.h"
 #include "gui/constantswidget.h"
+#include "gui/displayfontdialog.h"
 #include "gui/dockliststyle.h"
 #include "gui/editor.h"
 #include "gui/functionswidget.h"
@@ -16,6 +17,7 @@
 #include "gui/notationandprecisiondialog.h"
 #include "gui/oklchutils.h"
 #include "gui/resultdisplay.h"
+#include "gui/textmetrics.h"
 #include "gui/themedlineedit.h"
 #include "gui/uiconfig.h"
 #include "math/quantity.h"
@@ -36,7 +38,10 @@
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QFontInfo>
+#include <QFontMetricsF>
 #include <QFrame>
+#include <QGuiApplication>
 #include <QFocusEvent>
 #include <QHeaderView>
 #include <QHelpEvent>
@@ -675,6 +680,13 @@ private slots:
     void startup_restored_layout_activates_editor_without_input();
     void startup_paints_no_misplaced_hint_or_dock_tab_bar();
     void state_label_follows_editor_when_shown_before_window();
+    void font_dialog_preselects_system_font_and_size();
+    void font_dialog_preselects_installed_family();
+    void font_dialog_switches_back_to_system_font();
+    void font_dialog_search_filters_families();
+    void optical_top_inset_balances_room_above_caps_and_below_baseline();
+    void classic_state_label_uses_display_font_at_ui_size();
+    void editor_adds_optical_top_inset_for_cramped_fonts();
     void dock_surfaces_use_successive_generated_shades();
     void restored_constants_dock_empty_filter_fills_header();
     void dock_scroll_corner_uses_scrollbar_track_fill();
@@ -2749,6 +2761,217 @@ void TestDisplayUi::state_label_follows_editor_when_shown_before_window()
              qPrintable(recorder.misplacedPaints.join(QStringLiteral("; "))));
 }
 
+namespace {
+
+// A listed family other than the system font, preferring a common one.
+QString someInstalledFamily(QListWidget* families)
+{
+    for (const QString& preferred : { QStringLiteral("Menlo"), QStringLiteral("Courier New"),
+                                      QStringLiteral("DejaVu Sans Mono") }) {
+        if (!families->findItems(preferred, Qt::MatchExactly).isEmpty())
+            return preferred;
+    }
+    return families->count() > 1 ? families->item(1)->text() : QString();
+}
+
+// An installed family whose room above its capitals is smaller than below its
+// baseline, i.e. one that needs an optical top inset at the given size.
+QFont crampedFont(qreal pointSize)
+{
+    for (const QString& family : { QStringLiteral("Helvetica"), QStringLiteral("Liberation Sans"),
+                                   QStringLiteral("Nimbus Sans") }) {
+        QFont font(family);
+        font.setPointSizeF(pointSize);
+        if (QFontInfo(font).family() == family && TextMetrics::opticalTopInset(font) > 0)
+            return font;
+    }
+    return QFont();
+}
+
+}
+
+void TestDisplayUi::font_dialog_preselects_system_font_and_size()
+{
+    DisplayFontDialog dialog(DisplayFontDialog::systemFont(30));
+    QListWidget* families = dialog.findChild<QListWidget*>(QStringLiteral("fontFamilies"));
+    QLineEdit* size = dialog.findChild<QLineEdit*>(QStringLiteral("fontSize"));
+    QVERIFY(families != nullptr && size != nullptr);
+
+    // "System Font" is listed first and preselected with the true size, instead
+    // of the native panel's pretence that its first family is the current font.
+    QCOMPARE(families->item(0)->text(), QStringLiteral("System Font"));
+    QCOMPARE(families->currentRow(), 0);
+    QCOMPARE(size->text(), QStringLiteral("30"));
+    QVERIFY(dialog.systemFontSelected());
+    QVERIFY(DisplayFontDialog::isSystemFont(dialog.selectedFont()));
+    QCOMPARE(dialog.selectedFont().pointSize(), 30);
+
+    // The platform's private UI families (".AppleSystemUIFont") are not listed.
+    for (int row = 1; row < families->count(); ++row)
+        QVERIFY2(!families->item(row)->text().startsWith(QLatin1Char('.')),
+                 qPrintable(families->item(row)->text()));
+}
+
+void TestDisplayUi::font_dialog_preselects_installed_family()
+{
+    QString family;
+    {
+        DisplayFontDialog probe(DisplayFontDialog::systemFont(12));
+        family = someInstalledFamily(probe.findChild<QListWidget*>(QStringLiteral("fontFamilies")));
+    }
+    if (family.isEmpty())
+        QSKIP("no installed font family besides the system font");
+
+    QFont current(family);
+    current.setPointSize(18);
+    DisplayFontDialog dialog(current);
+    QListWidget* families = dialog.findChild<QListWidget*>(QStringLiteral("fontFamilies"));
+    QLineEdit* size = dialog.findChild<QLineEdit*>(QStringLiteral("fontSize"));
+    QListWidget* sizes = dialog.findChild<QListWidget*>(QStringLiteral("fontSizes"));
+    QVERIFY(families != nullptr && size != nullptr && sizes != nullptr);
+
+    QCOMPARE(families->currentItem()->text(), family);
+    QVERIFY(!dialog.systemFontSelected());
+    QCOMPARE(size->text(), QStringLiteral("18"));
+    QCOMPARE(sizes->currentItem()->text(), QStringLiteral("18"));
+    QCOMPARE(QFontInfo(dialog.selectedFont()).family(), QFontInfo(current).family());
+    QCOMPARE(dialog.selectedFont().pointSize(), 18);
+}
+
+void TestDisplayUi::font_dialog_switches_back_to_system_font()
+{
+    QString family;
+    {
+        DisplayFontDialog probe(DisplayFontDialog::systemFont(12));
+        family = someInstalledFamily(probe.findChild<QListWidget*>(QStringLiteral("fontFamilies")));
+    }
+    if (family.isEmpty())
+        QSKIP("no installed font family besides the system font");
+
+    QFont current(family);
+    current.setPointSize(20);
+    DisplayFontDialog dialog(current);
+    QListWidget* families = dialog.findChild<QListWidget*>(QStringLiteral("fontFamilies"));
+    QListWidget* typefaces = dialog.findChild<QListWidget*>(QStringLiteral("fontTypefaces"));
+    QVERIFY(families != nullptr && typefaces != nullptr);
+
+    families->setCurrentRow(0);
+    QVERIFY(dialog.systemFontSelected());
+    QVERIFY(DisplayFontDialog::isSystemFont(dialog.selectedFont()));
+    QCOMPARE(dialog.selectedFont().pointSize(), 20);
+    // The typefaces now are the system font's, with one selected.
+    QVERIFY(typefaces->count() > 0);
+    QVERIFY(typefaces->currentItem() != nullptr);
+}
+
+void TestDisplayUi::font_dialog_search_filters_families()
+{
+    DisplayFontDialog dialog(DisplayFontDialog::systemFont(14));
+    QListWidget* families = dialog.findChild<QListWidget*>(QStringLiteral("fontFamilies"));
+    QLineEdit* search = dialog.findChild<QLineEdit*>(QStringLiteral("fontSearch"));
+    QVERIFY(families != nullptr && search != nullptr);
+    const QString family = someInstalledFamily(families);
+    if (family.isEmpty())
+        QSKIP("no installed font family besides the system font");
+
+    search->setText(family);
+    for (int row = 0; row < families->count(); ++row) {
+        const bool matches = families->item(row)->text().contains(family, Qt::CaseInsensitive);
+        QCOMPARE(families->isRowHidden(row), !matches);
+    }
+    // The hidden "System Font" selection moves to the first match.
+    QVERIFY(!families->currentItem()->isHidden());
+    QVERIFY(families->currentItem()->text().contains(family, Qt::CaseInsensitive));
+
+    search->clear();
+    for (int row = 0; row < families->count(); ++row)
+        QVERIFY(!families->isRowHidden(row));
+}
+
+void TestDisplayUi::optical_top_inset_balances_room_above_caps_and_below_baseline()
+{
+    for (qreal size : { 13.0, 30.0 }) {
+        for (const QFont& font : { DisplayFontDialog::systemFont(size), crampedFont(size) }) {
+            const QFontMetricsF metrics(font);
+            const qreal aboveCaps = metrics.ascent() - metrics.capHeight();
+            const int inset = TextMetrics::opticalTopInset(font);
+            QVERIFY(inset >= 0);
+            // With the inset, the room above the capitals is at least the room
+            // below the baseline, up to rounding.
+            QVERIFY2(aboveCaps + inset >= metrics.descent() - 0.5,
+                     qPrintable(QStringLiteral("%1 %2pt: above caps %3 + inset %4, descent %5")
+                                    .arg(font.family()).arg(size).arg(aboveCaps)
+                                    .arg(inset).arg(metrics.descent())));
+            if (aboveCaps >= metrics.descent())
+                QCOMPARE(inset, 0);
+        }
+    }
+}
+
+void TestDisplayUi::classic_state_label_uses_display_font_at_ui_size()
+{
+    MainWindowStateGuard guard;
+    const bool oldClassicAppearance = guard.settings->classicAppearance;
+    const auto restore = qScopeGuard([&] { guard.settings->classicAppearance = oldClassicAppearance; });
+    guard.settings->classicAppearance = true;
+    guard.settings->sessionLayoutJson.clear();
+    guard.settings->hasNumberFormatStyleSetting = true;
+
+    QString family;
+    {
+        DisplayFontDialog probe(DisplayFontDialog::systemFont(12));
+        family = someInstalledFamily(probe.findChild<QListWidget*>(QStringLiteral("fontFamilies")));
+    }
+    if (family.isEmpty())
+        QSKIP("no installed font family besides the system font");
+
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    QFont displayFont(family);
+    displayFont.setPointSize(30);
+    QVERIFY(QMetaObject::invokeMethod(&window, "applyDisplayFont", Qt::DirectConnection,
+                                      Q_ARG(QFont, displayFont)));
+    const QString message = QStringLiteral("probe message for the state label");
+    QVERIFY(QMetaObject::invokeMethod(&window, "showStateLabel", Qt::DirectConnection,
+                                      Q_ARG(QString, message)));
+
+    QLabel* state = nullptr;
+    for (QLabel* label : window.findChildren<QLabel*>(QString(), Qt::FindDirectChildrenOnly)) {
+        if (!label->isHidden() && label->text() == message)
+            state = label;
+    }
+    QVERIFY(state != nullptr);
+    // The display font's family, at the compact UI size rather than 30 pt.
+    QCOMPARE(QFontInfo(state->font()).family(), QFontInfo(displayFont).family());
+    QCOMPARE(state->font().pointSizeF(), QGuiApplication::font().pointSizeF());
+    QCOMPARE(state->contentsMargins().top(), 1 + TextMetrics::opticalTopInset(state->font()));
+}
+
+void TestDisplayUi::editor_adds_optical_top_inset_for_cramped_fonts()
+{
+    const QFont cramped = crampedFont(30);
+    if (cramped == QFont())
+        QSKIP("no installed font that reserves less room above its capitals than below");
+
+    Editor editor;
+    editor.setFont(DisplayFontDialog::systemFont(30));
+    editor.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&editor));
+    const int systemInset = TextMetrics::opticalTopInset(editor.font());
+    const int systemTextTop = editor.viewport()->y();
+    const int systemHeight = editor.height() - systemInset - editor.fontMetrics().lineSpacing();
+
+    // The cramped font moves the text area down by its inset (relative to the
+    // system font's) and grows the field by as much; the padding around the
+    // line itself stays the same.
+    editor.setFont(cramped);
+    const int inset = TextMetrics::opticalTopInset(cramped);
+    QVERIFY(inset > 0);
+    QTRY_COMPARE(editor.viewport()->y() - systemTextTop, inset - systemInset);
+    QCOMPARE(editor.height() - inset - editor.fontMetrics().lineSpacing(), systemHeight);
+}
+
 void TestDisplayUi::visible_window_applies_restored_dock_and_keypad_layout()
 {
     MainWindowStateGuard guard;
@@ -2922,6 +3145,7 @@ void TestDisplayUi::dock_surfaces_use_successive_generated_shades()
         QString oldCustomColorSchemeJson;
         QByteArray oldWindowState;
         bool oldConstantsDockVisible;
+        bool oldFunctionsDockVisible;
         bool oldHasNumberFormatStyleSetting;
         QByteArray oldSkipUpdateCheck;
         bool hadSkipUpdateCheck;
@@ -2932,6 +3156,7 @@ void TestDisplayUi::dock_surfaces_use_successive_generated_shades()
             settings->customColorSchemeJson = oldCustomColorSchemeJson;
             settings->windowState = oldWindowState;
             settings->constantsDockVisible = oldConstantsDockVisible;
+            settings->functionsDockVisible = oldFunctionsDockVisible;
             settings->hasNumberFormatStyleSetting = oldHasNumberFormatStyleSetting;
             if (hadSkipUpdateCheck)
                 qputenv("SPEEDCRUNCH_TEST_SKIP_UPDATE_CHECK", oldSkipUpdateCheck);
@@ -2944,6 +3169,7 @@ void TestDisplayUi::dock_surfaces_use_successive_generated_shades()
         settings->customColorSchemeJson,
         settings->windowState,
         settings->constantsDockVisible,
+        settings->functionsDockVisible,
         settings->hasNumberFormatStyleSetting,
         qgetenv("SPEEDCRUNCH_TEST_SKIP_UPDATE_CHECK"),
         qEnvironmentVariableIsSet("SPEEDCRUNCH_TEST_SKIP_UPDATE_CHECK")
@@ -2953,7 +3179,10 @@ void TestDisplayUi::dock_surfaces_use_successive_generated_shades()
     settings->colorScheme = QStringLiteral("Custom");
     settings->customColorSchemeJson = themeJsonString(QJsonObject{{QStringLiteral("background"), QStringLiteral("#1f3229")}});
     settings->windowState.clear();
+    // Two open docks, so that they form a real tab group with a dock tab bar
+    // (a single open dock has none).
     settings->constantsDockVisible = true;
+    settings->functionsDockVisible = true;
     settings->hasNumberFormatStyleSetting = true;
 
     const QVector<QColor> shades =
@@ -2964,6 +3193,11 @@ void TestDisplayUi::dock_surfaces_use_successive_generated_shades()
     MainWindow window;
     window.show();
     QVERIFY(QTest::qWaitForWindowExposed(&window));
+    // The checks below inspect the Constants dock's widgets: bring its tab to front.
+    QDockWidget* frontDock = window.findChild<QDockWidget*>(QStringLiteral("ConstantsDock"));
+    QVERIFY(frontDock != nullptr);
+    frontDock->raise();
+    QTRY_VERIFY(frontDock->widget()->isVisible());
     QCoreApplication::processEvents();
 
     const QColor titleFill = shades.at(UiConfig::DockHeaderShade);
